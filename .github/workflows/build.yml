@@ -1,0 +1,19 @@
+name: Build and test
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  macos:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Core tests
+        run: swift test
+      - name: Build Apple Silicon application
+        run: scripts/build.sh release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BildShow-local-build
+          path: build/BildShow.app
