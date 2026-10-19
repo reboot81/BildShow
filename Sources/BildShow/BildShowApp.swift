@@ -18,6 +18,12 @@ import BildShowCore
         }.defaultSize(width: 980, height: 680)
         .commands {
             CommandGroup(replacing: .appInfo) { Button(L("Om BildShow", "About BildShow")) { openWindow(id: "about") } }
+            CommandGroup(replacing: .newItem) {
+                Button(L("Ny preset", "New preset")) {
+                    NotificationCenter.default.post(name: .newBildShowPreset, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+            }
             CommandGroup(after: .importExport) { Button(L("Importera preset…", "Import preset…")) { store.importPreset() } }
             CommandGroup(replacing: .help) { Button(L("Visa händelselogg", "Show event log")) { openWindow(id: "log") } }
         }
@@ -55,33 +61,31 @@ struct MainView: View {
         VStack(alignment: .leading, spacing: 0) {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 210, maximum: 320), spacing: 16)], spacing: 16) {
-                    Button { editing = Preset() } label: {
-                        VStack(spacing: 15) {
-                            Image(systemName: "plus.circle.fill").font(.system(size: 38, weight: .light)).foregroundStyle(.tint)
-                            Text(L("Ny preset", "New preset")).font(.headline)
-                            Text(L("Lägg till bildmappar", "Add image folders")).font(.caption).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity).frame(height: 150)
-                            .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
-                            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
-                    }.buttonStyle(.plain)
                     ForEach(filtered) { preset in
+                        let isLoading = player.starting || store.scanning.contains(preset.id)
                         ZStack(alignment: .bottomTrailing) {
                             Button { player.start(preset) } label: {
                                 VStack(spacing: 0) {
                                     VStack(spacing: 12) {
-                                        HStack { Image(systemName: "play.fill").font(.title2).foregroundStyle(.tint); Spacer(); Image(systemName: "rectangle.stack").foregroundStyle(.tertiary) }
+                                        HStack {
+                                            Image(systemName: "play.fill")
+                                                .font(.system(size: 32, weight: .semibold))
+                                                .foregroundStyle(isLoading ? Color.secondary : Color.accentColor)
+                                            Spacer()
+                                            Image(systemName: "rectangle.stack").foregroundStyle(.tertiary)
+                                        }
                                         Text(preset.name).font(.title3.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
                                     }.padding(20).frame(maxWidth: .infinity).frame(height: 108)
                                     Divider()
                                     HStack {
-                                        Text("\(preset.folders.count) / \(store.imageCount(preset))").monospacedDigit()
-                                            .help(L("Mappar / bilder", "Folders / images"))
+                                        Text(presetSummary(preset))
+                                            .monospacedDigit()
                                         if store.scanning.contains(preset.id) { ProgressView().controlSize(.mini) }
                                         Spacer()
                                     }
                                     .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.trailing, 30).frame(height: 42)
                                 }
-                            }.buttonStyle(.plain).disabled(player.starting)
+                            }.buttonStyle(.plain).disabled(isLoading)
                             Menu { presetMenu(preset) } label: {
                                 Image(systemName: "ellipsis.circle").font(.body)
                             }
@@ -100,6 +104,15 @@ struct MainView: View {
                                 let value = store.presets.remove(at: from); store.presets.insert(value, at: to); store.saveOrder(); self.dragging = nil; return true
                             }
                     }
+                    Button { editing = Preset() } label: {
+                        VStack(spacing: 15) {
+                            Image(systemName: "plus.circle.fill").font(.system(size: 38, weight: .light)).foregroundStyle(.tint)
+                            Text(L("Ny preset", "New preset")).font(.headline)
+                            Text(L("Lägg till bildmappar", "Add image folders")).font(.caption).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity).frame(height: 150)
+                            .background(Color.accentColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+                            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
+                    }.buttonStyle(.plain)
                 }.padding(.horizontal, 28).padding(.vertical, 28)
                 if store.presets.isEmpty {
                     VStack(spacing: 10) {
@@ -117,13 +130,22 @@ struct MainView: View {
             }.padding(.horizontal, 24).padding(.vertical, 12)
         }.background(Color(nsColor: .windowBackgroundColor))
             .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { openWindow(id: "about") } label: { Label(L("Om BildShow", "About BildShow"), systemImage: "info.circle") }
-                }
+                ToolbarItem { Button { editing = Preset() } label: { Label(L("Ny preset", "New preset"), systemImage: "plus") } }
                 ToolbarItem { Button { store.importPreset() } label: { Label(L("Importera", "Import"), systemImage: "square.and.arrow.down") } }
                 ToolbarItem { Button { cleanupID = nil; cleanup = true } label: { Label(L("Städa", "Cleanup"), systemImage: "trash") } }
                 ToolbarItem { Button { openSettings() } label: { Label(L("Inställningar", "Settings"), systemImage: "gearshape") } }
-            }.searchable(text: $search, prompt: L("Sök presets", "Search presets"))
+                ToolbarItemGroup(placement: .primaryAction) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                        TextField(L("Sök presets", "Search presets"), text: $search)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 190)
+                    }
+                    Button { openWindow(id: "about") } label: {
+                        Label(L("Om BildShow", "About BildShow"), systemImage: "info.circle")
+                    }
+                }
+            }
             .sheet(item: $editing) { preset in PresetEditor(store: store, preset: preset, demo: player.demo, onSave: store.save) }
             .sheet(isPresented: $cleanup) { CleanupView(store: store, presetID: cleanupID) }
             .confirmationDialog(L("Ta bort preset? Bilderna behålls.", "Delete preset? Your images are kept."), isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
@@ -133,6 +155,14 @@ struct MainView: View {
                 guard !appeared else { return }; appeared = true
                 if let id = store.preferences.autostartPreset, let preset = store.presets.first(where: { $0.id == id }) { player.start(preset) }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .newBildShowPreset)) { _ in editing = Preset() }
+    }
+    private func presetSummary(_ preset: Preset) -> String {
+        let images = store.imageCount(preset)
+        let imageWord = L(images == 1 ? "fil" : "filer", images == 1 ? "file" : "files")
+        let folders = preset.folders.count
+        let folderWord = L(folders == 1 ? "mapp" : "mappar", folders == 1 ? "folder" : "folders")
+        return "\(images) \(imageWord) " + L("från", "from") + " \(folders) \(folderWord)"
     }
     @ViewBuilder func presetMenu(_ preset: Preset) -> some View {
         Button(L("Redigera…", "Edit…")) { editing = preset }
@@ -194,7 +224,11 @@ struct AboutView: View {
                     Text(L("Demoporträttet är AI-genererat. Ingen AI används vid bildvisning.", "The demo portrait is AI-generated. Slideshow playback does not use AI."))
                 }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
             }
-            HStack { Text("© 2026 Bo Saurage").foregroundStyle(.secondary); Spacer(); Link("GitHub", destination: URL(string: "https://github.com/reboot81/BildShow")!) }
+            HStack {
+                Link("MIT License", destination: URL(string: "https://github.com/reboot81/BildShow/blob/main/LICENSE")!)
+                Spacer()
+                Link("GitHub", destination: URL(string: "https://github.com/reboot81/BildShow")!)
+            }
             Spacer(minLength: 0)
         }.padding(28)
             .sheet(isPresented: $showsCredits) { BildShowRetroCredits(isPresented: $showsCredits) }
@@ -202,6 +236,10 @@ struct AboutView: View {
 
     private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
     private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
+}
+
+private extension Notification.Name {
+    static let newBildShowPreset = Notification.Name("BildShowNewPreset")
 }
 
 private struct BildShowRetroCredits: View {

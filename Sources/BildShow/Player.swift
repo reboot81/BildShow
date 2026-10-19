@@ -2,6 +2,18 @@ import AppKit
 import IOKit.pwr_mgt
 import BildShowCore
 
+private enum CaptionMode {
+    case hidden, filename, fullPath
+
+    var next: CaptionMode {
+        switch self {
+        case .hidden: return .filename
+        case .filename: return .fullPath
+        case .fullPath: return .hidden
+        }
+    }
+}
+
 final class PlaybackWindow: NSWindow {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -23,7 +35,7 @@ final class PlaybackWindow: NSWindow {
     private var index = -1
     private var failed = Set<String>()
     private var paused = false
-    private var temporaryFilename = false
+    private var captionMode: CaptionMode = .hidden
     private var timer: Timer?
     private var animation: Task<Void, Never>?
     private var request: Task<Void, Never>?
@@ -110,7 +122,9 @@ final class PlaybackWindow: NSWindow {
         oldPresentation = NSApp.presentationOptions
         if fullscreen { NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar] }
         window.makeKeyAndOrderFront(nil); window.makeFirstResponder(surface)
-        starting = false; isPlaying = true; paused = settings[.manual].bool; failed = []; undoMarks = []; temporaryFilename = false; overrideScale = nil
+        starting = false; isPlaying = true; paused = settings[.manual].bool; failed = []; undoMarks = []
+        captionMode = settings[.filenameAlways].bool ? .filename : .hidden
+        overrideScale = nil
         IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "BildShow slideshow" as CFString, &assertion)
         surface.message(L("Förbereder bilder…", "Preparing images…"), duration: 10)
         advance(1, manual: true)
@@ -136,9 +150,10 @@ final class PlaybackWindow: NSWindow {
         case .undo:
             guard let path = undoMarks.popLast(), let id = preset?.id else { return }
             preset?.markedPaths.remove(path); store.update(id) { $0.markedPaths.remove(path) }; surface?.message(L("Markeringen ångrad", "Mark undone"))
-        case .filename: temporaryFilename.toggle(); updateCaption()
+        case .filename: captionMode = captionMode.next; updateCaption()
         case .filenames:
             settings.values[Setting.filenameAlways.rawValue] = .bool(!settings[.filenameAlways].bool)
+            captionMode = settings[.filenameAlways].bool ? .filename : .hidden
             if let id = preset?.id, !demoMode { store.update(id) { $0.overrides[Setting.filenameAlways.rawValue] = settings[.filenameAlways] } }; updateCaption()
         case .fullscreen: toggleFullscreen()
         case .original:
@@ -167,7 +182,7 @@ final class PlaybackWindow: NSWindow {
         else if let action = PlayerAction(rawValue: mapping) { perform(action) }
     }
     private func advance(_ direction: Int, manual: Bool) {
-        timer?.invalidate(); animation?.cancel(); request?.cancel(); temporaryFilename = false; overrideScale = nil
+        timer?.invalidate(); animation?.cancel(); request?.cancel(); overrideScale = nil
         let token = UUID(); requestID = token
         request = Task { [weak self] in
             guard let self else { return }
@@ -249,7 +264,12 @@ final class PlaybackWindow: NSWindow {
         }
     }
     private func updateCaption() {
-        surface?.setCaption(settings[.filenameAlways].bool || temporaryFilename ? current.map { URL(fileURLWithPath: $0.path).lastPathComponent } ?? "" : "")
+        guard let current else { surface?.setCaption(""); return }
+        switch captionMode {
+        case .hidden: surface?.setCaption("")
+        case .filename: surface?.setCaption(URL(fileURLWithPath: current.path).lastPathComponent)
+        case .fullPath: surface?.setCaption(current.path)
+        }
     }
     private func rerender() {
         guard let current else { return }

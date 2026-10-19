@@ -25,6 +25,7 @@ private final class FolderTreeNode: @unchecked Sendable {
 struct FolderOutlinePicker: NSViewRepresentable {
     var roots: [FolderReference]
     var folders: [FolderReference]
+    var revealPath: String?
     var onToggle: (String, Data?) -> Void
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -40,6 +41,13 @@ struct FolderOutlinePicker: NSViewRepresentable {
         outline.columnAutoresizingStyle = .firstColumnOnlyAutoresizingStyle
         outline.dataSource = context.coordinator
         outline.delegate = context.coordinator
+        let menu = NSMenu()
+        let reveal = NSMenuItem(title: L("Visa i Finder", "Show in Finder"), action: #selector(Coordinator.revealInFinder(_:)), keyEquivalent: "")
+        reveal.target = context.coordinator
+        let copy = NSMenuItem(title: L("Kopiera sökväg", "Copy Path"), action: #selector(Coordinator.copyPath(_:)), keyEquivalent: "")
+        copy.target = context.coordinator
+        menu.items = [reveal, copy]
+        outline.menu = menu
 
         let name = NSTableColumn(identifier: .name)
         name.title = L("Namn", "Name")
@@ -76,6 +84,7 @@ struct FolderOutlinePicker: NSViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.updateRootsIfNeeded(roots)
         context.coordinator.outline?.reloadData()
+        context.coordinator.revealIfNeeded(revealPath)
     }
 
     final class Coordinator: NSObject, NSOutlineViewDataSource, NSOutlineViewDelegate {
@@ -83,7 +92,15 @@ struct FolderOutlinePicker: NSViewRepresentable {
         weak var outline: NSOutlineView?
         private var rootNodes: [FolderTreeNode] = []
         private var rootSignature: [String] = []
+        private var lastRevealPath: String?
         private let counter = OperationQueue()
+        private static let dateFormatter: DateFormatter = {
+            let formatter = DateFormatter()
+            formatter.locale = .autoupdatingCurrent
+            formatter.dateStyle = .short
+            formatter.timeStyle = .short
+            return formatter
+        }()
 
         init(_ parent: FolderOutlinePicker) {
             self.parent = parent
@@ -92,6 +109,7 @@ struct FolderOutlinePicker: NSViewRepresentable {
         }
 
         func rebuildRoots(from references: [FolderReference]) {
+            lastRevealPath = nil
             rootSignature = references.map { $0.id.uuidString + "|" + $0.path }
             rootNodes = references.map { reference in
                 var stale = false
@@ -104,6 +122,7 @@ struct FolderOutlinePicker: NSViewRepresentable {
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.rootNodes.forEach { self.outline?.expandItem($0) }
+                self.revealIfNeeded(self.parent.revealPath)
             }
         }
 
@@ -152,9 +171,61 @@ struct FolderOutlinePicker: NSViewRepresentable {
                 return cell
             default:
                 let cell = textCell(in: outlineView, identifier: .modifiedCell)
-                cell.textField?.stringValue = node.modified?.formatted(date: .abbreviated, time: .shortened) ?? "—"
+                cell.textField?.stringValue = node.modified.map(Self.dateFormatter.string(from:)) ?? "—"
                 return cell
             }
+        }
+
+        @objc func revealInFinder(_ sender: Any?) {
+            guard let node = contextNode() else { return }
+            NSWorkspace.shared.activateFileViewerSelecting([node.url])
+        }
+
+        @objc func copyPath(_ sender: Any?) {
+            guard let node = contextNode() else { return }
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(node.url.path, forType: .string)
+        }
+
+        private func contextNode() -> FolderTreeNode? {
+            guard let outline, outline.clickedRow >= 0 else { return nil }
+            return outline.item(atRow: outline.clickedRow) as? FolderTreeNode
+        }
+
+        func revealIfNeeded(_ path: String?) {
+            guard let path else { return }
+            let target = URL(fileURLWithPath: path).standardizedFileURL.path
+            guard target != lastRevealPath else { return }
+            lastRevealPath = target
+            guard let root = rootNodes
+                .filter({ contains(target, in: $0.url.standardizedFileURL.path) })
+                .max(by: { $0.url.path.count < $1.url.path.count }) else { return }
+            reveal(target, from: root)
+        }
+
+        private func reveal(_ target: String, from node: FolderTreeNode) {
+            outline?.expandItem(node)
+            if node.url.standardizedFileURL.path == target {
+                selectAndScroll(node)
+                return
+            }
+            loadChildren(of: node) { [weak self, weak node] in
+                guard let self, let node,
+                      let child = node.children?.first(where: { self.contains(target, in: $0.url.standardizedFileURL.path) }) else { return }
+                self.reveal(target, from: child)
+            }
+        }
+
+        private func selectAndScroll(_ node: FolderTreeNode) {
+            guard let outline else { return }
+            let row = outline.row(forItem: node)
+            guard row >= 0 else { return }
+            outline.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            outline.scrollRowToVisible(row)
+        }
+
+        private func contains(_ target: String, in folder: String) -> Bool {
+            target == folder || target.hasPrefix(folder.hasSuffix("/") ? folder : folder + "/")
         }
 
         @objc private func toggleFolder(_ sender: NSButton) {
@@ -163,19 +234,30 @@ struct FolderOutlinePicker: NSViewRepresentable {
             parent.onToggle(node.url.path, bookmark)
         }
 
-        private func loadChildren(of node: FolderTreeNode) {
-            guard node.children == nil, !node.isLoading else { return }
+        private func loadChildren(of node: FolderTreeNode, completion: (() -> Void)? = nil) {
+            if node.children != nil { completion?(); return }
+            guard !node.isLoading else {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self, weak node] in
+                    guard let self, let node else { return }
+                    self.loadChildren(of: node, completion: completion)
+                }
+                return
+            }
             node.isLoading = true
             let url = node.url
             let bookmark = node.bookmark
             DispatchQueue.global(qos: .userInitiated).async { [weak self, weak node] in
                 let urls = ((try? FileManager.default.contentsOfDirectory(
                     at: url,
-                    includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+                    includingPropertiesForKeys: [.isDirectoryKey, .isPackageKey, .contentModificationDateKey],
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
                 )) ?? []).filter {
-                    (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true
-                }.sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+                    guard let values = try? $0.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey]) else { return false }
+                    return values.isDirectory == true && values.isPackage != true
+                }.sorted {
+                    FileManager.default.displayName(atPath: $0.path)
+                        .localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending
+                }
                 let children = urls.map { FolderTreeNode(url: $0, bookmark: bookmark) }
                 DispatchQueue.main.async {
                     guard let self, let node else { return }
@@ -183,6 +265,7 @@ struct FolderOutlinePicker: NSViewRepresentable {
                     node.isLoading = false
                     self.outline?.reloadItem(node, reloadChildren: true)
                     self.outline?.expandItem(node)
+                    completion?()
                 }
             }
         }

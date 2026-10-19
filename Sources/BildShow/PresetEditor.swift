@@ -18,16 +18,18 @@ struct PresetEditor: View {
     @State private var countTask: Task<Void, Never>?
     @State private var monitor: Any?
     @State private var dragging: UUID?
+    @State private var revealedFolderPath: String?
     var body: some View {
         VStack(spacing: 0) {
             HStack {
                 Image(systemName: "rectangle.stack.badge.plus").font(.title2).foregroundStyle(.tint)
                 TextField(L("Presetens namn", "Preset name"), text: $preset.name).textFieldStyle(.roundedBorder).font(.title3)
-                Picker("", selection: $editorSection) {
-                    Label(L("Mappar", "Folders"), systemImage: "folder").tag("folders")
-                    Label(L("Bildspelsinställningar", "Slideshow settings"), systemImage: "slider.horizontal.3").tag("settings")
+                HStack(spacing: 2) {
+                    editorSectionButton(L("Mappar", "Folders"), icon: "folder", section: "folders")
+                    editorSectionButton(L("Bildspelsinställningar", "Slideshow settings"), icon: "slider.horizontal.3", section: "settings")
                 }
-                .pickerStyle(.segmented)
+                .padding(2)
+                .background(Color.secondary.opacity(0.14), in: RoundedRectangle(cornerRadius: 7))
                 .frame(width: 390)
             }.fixedSize(horizontal: false, vertical: true).padding(20)
             if editorSection == "settings" {
@@ -69,11 +71,27 @@ struct PresetEditor: View {
         }.frame(width: 1400, height: 966)
             .onAppear {
                 roots = browserRoots(); access = ScopedAccess(preset.folders); recount()
+                if preset.folders.isEmpty { revealedFolderPath = FileManager.default.homeDirectoryForCurrentUser.path }
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if event.keyCode == 6, event.modifierFlags.contains(.control) { undo(); return nil }; return event
                 }
             }
             .onDisappear { countTask?.cancel(); if let monitor { NSEvent.removeMonitor(monitor) }; access = nil }
+    }
+
+    private func editorSectionButton(_ title: String, icon: String, section: String) -> some View {
+        Button { editorSection = section } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                Text(title)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(editorSection == section ? Color.accentColor.opacity(0.22) : Color.clear,
+                        in: RoundedRectangle(cornerRadius: 5))
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(editorSection == section ? .isSelected : [])
     }
 
     private var selectedFoldersPane: some View {
@@ -105,6 +123,10 @@ struct PresetEditor: View {
                 }
             }
             .onDrop(of: [.fileURL], isTargeted: nil, perform: dropFolders)
+            .onChange(of: selectedFolders) { _, selection in
+                guard let id = selection.first, let folder = preset.folders.first(where: { $0.id == id }) else { return }
+                revealedFolderPath = folder.path
+            }
 
             HStack {
                 Button {
@@ -114,8 +136,6 @@ struct PresetEditor: View {
                 }
                 .disabled(selectedFolders.isEmpty)
                 Spacer()
-                Text("\(preset.folders.count) " + L("valda", "selected"))
-                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
         }
         .frame(minWidth: 285, idealWidth: 330, maxWidth: 410, maxHeight: .infinity)
@@ -138,8 +158,9 @@ struct PresetEditor: View {
             FolderOutlinePicker(
                 roots: roots,
                 folders: preset.folders,
+                revealPath: revealedFolderPath,
                 onToggle: { path, bookmark in
-                    changeFolders(FolderSelection.toggled(path, bookmark: bookmark, in: preset.folders))
+                    changeFolders(alphabetized(FolderSelection.toggled(path, bookmark: bookmark, in: preset.folders)))
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -183,6 +204,12 @@ struct PresetEditor: View {
         .padding(.vertical, 5)
     }
     func changeFolders(_ folders: [FolderReference]) { guard folders != preset.folders else { return }; history.append(preset.folders); preset.folders = folders; recount() }
+    func alphabetized(_ folders: [FolderReference]) -> [FolderReference] {
+        folders.sorted {
+            FileManager.default.displayName(atPath: $0.path)
+                .localizedStandardCompare(FileManager.default.displayName(atPath: $1.path)) == .orderedAscending
+        }
+    }
     func undo() { guard let previous = history.popLast() else { return }; preset.folders = previous; recount() }
     func updateRecursive(_ folder: FolderReference, to recursive: Bool) {
         var next = preset.folders
@@ -227,7 +254,7 @@ struct PresetEditor: View {
                 } else if let index = next.firstIndex(where: { $0.path == folder.path }) { next[index].bookmark = folder.bookmark }
             }
             access = ScopedAccess(next)
-            changeFolders(next)
+            changeFolders(alphabetized(next))
         }
     }
     func recount() {
@@ -248,7 +275,7 @@ struct PresetEditor: View {
                     addBrowserRoot(folder)
                     access = ScopedAccess(preset.folders + [folder])
                     guard !FolderSelection.isIncluded(folder.path, in: preset.folders) else { return }
-                    changeFolders(FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: preset.folders))
+                    changeFolders(alphabetized(FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: preset.folders)))
                 }
             }
         }; return true

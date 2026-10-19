@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Wrap the signed SwiftPM application in an Xcode distribution archive."""
-import datetime, pathlib, plistlib, shutil
+import datetime, os, pathlib, plistlib, shutil
 root = pathlib.Path(__file__).resolve().parent.parent
-app = root / 'build/BildShow.app'
-archive = root / 'build/BildShow.xcarchive'
+build_root = pathlib.Path(os.environ.get('BUILD_ROOT', root / 'build'))
+app = build_root / 'BildShow.app'
+archive = build_root / 'BildShow.xcarchive'
 products = archive / 'Products/Applications'
 products.mkdir(parents=True, exist_ok=True)
 shutil.copytree(app, products / app.name, dirs_exist_ok=True)

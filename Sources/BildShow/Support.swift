@@ -64,7 +64,7 @@ extension PlayerAction {
         case .faster: return L("Minska bildtiden", "Decrease interval")
         case .mark: return L("Markera för städning", "Mark for cleanup")
         case .undo: return L("Ångra markering", "Undo mark")
-        case .filename: return L("Filnamn för aktuell bild", "Filename for this image")
+        case .filename: return L("Bildtext: filnamn / sökväg / dold", "Caption: filename / path / hidden")
         case .filenames: return L("Filnamn på / av", "Toggle filenames")
         case .fullscreen: return L("Fullskärm på / av", "Toggle full screen")
         case .original: return L("Originalstorlek / anpassa", "Actual size / fit")

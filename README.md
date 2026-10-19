@@ -8,7 +8,7 @@ Create a preset, add folders, and click its card to start. Images remain in thei
 
 ## Features
 
-- Two-pane folder selection: the preset's selected folders on the left and all Finder-visible mounted disks in a CCC-style hierarchy with checkboxes, disclosure rows, image counts and modification dates on the right. Includes subtree exclusions, drag and drop, and undo.
+- Two-pane folder selection: the preset's selected folders on the left and all Finder-visible mounted disks in a CCC-style hierarchy with checkboxes, disclosure rows, image counts and system-formatted modification dates on the right. New presets open at the user's home folder. Includes subtree exclusions, Finder/path context actions, drag and drop, and undo.
 - Full screen on the app's display, optional display selection and windowed playback.
 - Direct cuts, crossfades and fades through the background.
 - Proportional fit, fill, width, height and smart cropping, with separate portrait/landscape choices.
@@ -26,7 +26,7 @@ The default interval is 2.5 seconds, including a 0.5-second crossfade. Shuffle i
 ## Quick start
 
 1. Choose **New preset** and enter a name.
-2. Expand a disk in the right-hand tree and check the folders to include.
+2. Start in your home folder or expand another disk in the right-hand tree, then check the folders to include.
 3. Save the preset, then click its card.
 4. Use Space to pause, arrow keys to navigate or change the interval, and Esc to end.
 
@@ -41,7 +41,7 @@ The folder tree shows candidate files directly inside each visible folder before
 | ↑ / ↓ | Increase / decrease interval |
 | X | Mark for cleanup and advance |
 | ⌘Z | Undo the last cleanup mark in this playback session |
-| I | Filename for the current image |
+| I | Cycle filename, full path and hidden caption |
 | ⇧I | Persistent filename overlay |
 | F | Toggle full screen |
 | 1 | Actual size / fit |
@@ -69,7 +69,9 @@ swift test
 open build/BildShow.app
 ```
 
-The script builds arm64 only and creates a locally signed hardened application. For Developer ID distribution, set `SIGN_IDENTITY` to your installed Developer ID Application identity. See [release instructions](docs/RELEASING.md).
+The script builds arm64 only and creates a locally signed hardened application. Set `BUILD_ROOT` to place the app outside the repository when needed. For Developer ID distribution, set `SIGN_IDENTITY` to your installed Developer ID Application identity. See [release instructions](docs/RELEASING.md).
+
+BildShow is released under the [MIT License](LICENSE).
 
 ## Verification and limits
 
