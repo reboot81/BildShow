@@ -8,7 +8,7 @@ Create a preset, add folders, and click its card to start. Images remain in thei
 
 ## Features
 
-- Multi-folder presets, recursive folder selection, folder counts, drag and drop, and undo.
+- Two-pane folder selection: the preset's selected folders on the left and a CCC-style hierarchy with checkboxes, disclosure rows, image counts and modification dates on the right. Includes subtree exclusions, drag and drop, and undo.
 - Full screen on the app's display, optional display selection and windowed playback.
 - Direct cuts, crossfades and fades through the background.
 - Proportional fit, fill, width, height and smart cropping, with separate portrait/landscape choices.

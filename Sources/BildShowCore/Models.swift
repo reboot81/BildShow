@@ -90,8 +90,10 @@ public struct FolderReference: Codable, Identifiable, Equatable, Sendable {
     public var path: String
     public var bookmark: Data?
     public var recursive: Bool
-    public init(path: String, bookmark: Data? = nil, recursive: Bool = true) {
+    public var excludedRelativePaths: Set<String>?
+    public init(path: String, bookmark: Data? = nil, recursive: Bool = true, excludedRelativePaths: Set<String>? = nil) {
         self.id = UUID(); self.path = path; self.bookmark = bookmark; self.recursive = recursive
+        self.excludedRelativePaths = excludedRelativePaths
     }
 }
 

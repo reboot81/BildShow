@@ -10,7 +10,6 @@ struct PresetEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var roots: [FolderReference] = []
     @State private var access: ScopedAccess?
-    @State private var selectedTree: Set<String> = []
     @State private var selectedFolders: Set<UUID> = []
     @State private var history: [[FolderReference]] = []
     @State private var advanced = false
@@ -19,7 +18,6 @@ struct PresetEditor: View {
     @State private var countTask: Task<Void, Never>?
     @State private var monitor: Any?
     @State private var dragging: UUID?
-    @State private var search = ""
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -41,46 +39,11 @@ struct PresetEditor: View {
                 }.padding()
             } else {
                 HSplitView {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(L("Inkluderade mappar", "Included folders")).font(.headline).padding()
-                        List(selection: $selectedFolders) {
-                            ForEach(preset.folders) { folder in
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Label(URL(fileURLWithPath: folder.path).lastPathComponent, systemImage: "folder.fill").font(.body.weight(.medium))
-                                    Text(folder.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(folder.path)
-                                    Toggle(L("Inkludera undermappar", "Include subfolders"), isOn: Binding(get: { folder.recursive }, set: { value in
-                                        var next = preset.folders; if let i = next.firstIndex(where: { $0.id == folder.id }) { next[i].recursive = value }; changeFolders(next)
-                                    })).toggleStyle(.checkbox).font(.caption)
-                                }.padding(.vertical, 5).tag(folder.id)
-                                    .onDrag { dragging = folder.id; return NSItemProvider(object: folder.id.uuidString as NSString) }
-                                    .onDrop(of: [.text], isTargeted: nil) { _ in
-                                        guard let source = dragging, let from = preset.folders.firstIndex(where: { $0.id == source }), let to = preset.folders.firstIndex(where: { $0.id == folder.id }), from != to else { return false }
-                                        var next = preset.folders; let moving = next.remove(at: from); next.insert(moving, at: to); changeFolders(next); dragging = nil; return true
-                                    }
-                            }
-                        }.overlay { if preset.folders.isEmpty { ContentUnavailableView(L("Lägg till dina bildmappar", "Add your image folders"), systemImage: "folder.badge.plus", description: Text(L("Välj till höger eller dra mappar från Finder.", "Select on the right or drag folders from Finder."))) } }
-                            .onDrop(of: [.fileURL], isTargeted: nil, perform: dropFolders)
-                    }.frame(minWidth: 290, idealWidth: 420, maxHeight: .infinity)
-                    VStack(spacing: 18) {
-                        Button { addSelected() } label: { Image(systemName: "chevron.left.2").frame(width: 30, height: 24) }.disabled(selectedTree.isEmpty).help(L("Lägg till markerade mappar", "Add selected folders"))
-                        Button { changeFolders(preset.folders.filter { !selectedFolders.contains($0.id) }); selectedFolders = [] } label: { Image(systemName: "chevron.right.2").frame(width: 30, height: 24) }.disabled(selectedFolders.isEmpty).help(L("Ta bort ur preset", "Remove from preset"))
-                    }.padding(12).frame(width: 72).frame(maxHeight: .infinity)
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack {
-                            Text(L("Mappar på disk", "Folders on disk")).font(.headline)
-                            Spacer()
-                            Button { browse() } label: { Label(L("Bläddra…", "Browse…"), systemImage: "folder.badge.plus") }
-                        }.padding()
-                        ScrollView {
-                            LazyVStack(alignment: .leading, spacing: 2) {
-                                ForEach(roots) { root in FolderTreeRow(url: URL(fileURLWithPath: root.path), selection: $selectedTree, initiallyExpanded: true) }
-                            }.padding(.horizontal, 8)
-                            if roots.isEmpty {
-                                ContentUnavailableView(L("Välj en plats", "Choose a location"), systemImage: "externaldrive", description: Text(L("Bläddra ger BildShow åtkomst till mapparna du väljer.", "Browse grants BildShow access to the folders you select."))).padding(.top, 70)
-                            }
-                        }
-                    }.frame(minWidth: 300, idealWidth: 420, maxHeight: .infinity)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    selectedFoldersPane
+                    folderBrowserPane
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
             }
             Divider()
             HStack {
@@ -100,34 +63,169 @@ struct PresetEditor: View {
             }.padding(16)
         }.frame(width: 1000, height: 690)
             .onAppear {
-                roots = preset.folders; access = ScopedAccess(roots); recount()
+                roots = topLevelRoots(preset.folders); access = ScopedAccess(roots); recount()
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if event.keyCode == 6, event.modifierFlags.contains(.control) { undo(); return nil }; return event
                 }
             }
             .onDisappear { countTask?.cancel(); if let monitor { NSEvent.removeMonitor(monitor) }; access = nil }
     }
-    func changeFolders(_ folders: [FolderReference]) { guard folders != preset.folders else { return }; history.append(preset.folders); preset.folders = folders; recount() }
-    func undo() { guard let previous = history.popLast() else { return }; preset.folders = previous; recount() }
-    func browse() {
-        chooseFolders { folders in
-            for folder in folders {
-                if let index = roots.firstIndex(where: { $0.path == folder.path }) { roots[index] = folder }
-                else { roots.append(folder) }
-                if let index = preset.folders.firstIndex(where: { $0.path == folder.path }) {
-                    preset.folders[index].bookmark = folder.bookmark
+
+    private var selectedFoldersPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(L("Valda mappar", "Selected folders")).font(.headline)
+                Text(L("Dessa mappar ingår i preseten.", "These folders are included in the preset."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+
+            List(selection: $selectedFolders) {
+                ForEach(preset.folders) { folder in
+                    selectedFolderRow(folder)
+                        .tag(folder.id)
+                        .onDrag {
+                            dragging = folder.id
+                            return NSItemProvider(object: folder.id.uuidString as NSString)
+                        }
+                        .onDrop(of: [.text], isTargeted: nil) { _ in moveFolder(dragging, before: folder.id) }
                 }
             }
-            access = ScopedAccess(roots); selectedTree = Set(folders.map(\.path))
+            .overlay {
+                if preset.folders.isEmpty {
+                    ContentUnavailableView(
+                        L("Inga valda mappar", "No selected folders"),
+                        systemImage: "folder.badge.questionmark",
+                        description: Text(L("Bocka i mappar i filträdet till höger.", "Check folders in the file tree on the right."))
+                    )
+                }
+            }
+            .onDrop(of: [.fileURL], isTargeted: nil, perform: dropFolders)
+
+            HStack {
+                Button {
+                    removeSelectedFolders()
+                } label: {
+                    Label(L("Ta bort", "Remove"), systemImage: "minus")
+                }
+                .disabled(selectedFolders.isEmpty)
+                Spacer()
+                Text("\(preset.folders.count) " + L("valda", "selected"))
+                    .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            }
         }
+        .frame(minWidth: 285, idealWidth: 330, maxWidth: 410, maxHeight: .infinity)
     }
-    func addSelected() {
+
+    private var folderBrowserPane: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .bottom) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(L("Mappar på disk", "Folders on disk")).font(.headline)
+                    Text(L("Bläddra i hierarkin och bocka i mappar som skall ingå.", "Browse the hierarchy and check folders to include."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button { browse() } label: {
+                    Label(L("Lägg till plats…", "Add location…"), systemImage: "folder.badge.plus")
+                }
+            }
+
+            FolderOutlinePicker(
+                roots: roots,
+                folders: preset.folders,
+                onToggle: { path, bookmark in
+                    changeFolders(FolderSelection.toggled(path, bookmark: bookmark, in: preset.folders))
+                }
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onDrop(of: [.fileURL], isTargeted: nil, perform: dropFolders)
+
+            Text(L("Bilder visar kandidatfiler. Avbockade undermappar sparas som undantag från en vald överordnad mapp.", "Images shows candidate files. Unchecked subfolders are saved as exclusions from a selected parent folder."))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(minWidth: 500, maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func selectedFolderRow(_ folder: FolderReference) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: folder.path))
+                    .resizable().scaledToFit().frame(width: 20, height: 20)
+                Text(URL(fileURLWithPath: folder.path).lastPathComponent).font(.body.weight(.medium)).lineLimit(1)
+                Spacer()
+                Button {
+                    removeFolder(folder)
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help(L("Ta bort mappen från preseten", "Remove folder from preset"))
+            }
+            Text(folder.path)
+                .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle).help(folder.path)
+            Toggle(L("Inkludera undermappar", "Include subfolders"), isOn: Binding(
+                get: { folder.recursive },
+                set: { updateRecursive(folder, to: $0) }
+            ))
+            .toggleStyle(.checkbox).font(.caption)
+            if let exclusions = folder.excludedRelativePaths, !exclusions.isEmpty {
+                Label(
+                    "\(exclusions.count) " + L(exclusions.count == 1 ? "undantagen undermapp" : "undantagna undermappar", exclusions.count == 1 ? "excluded subfolder" : "excluded subfolders"),
+                    systemImage: "folder.badge.minus"
+                )
+                .font(.caption2).foregroundStyle(.secondary)
+                .help(exclusions.sorted().joined(separator: "\n"))
+            }
+        }
+        .padding(.vertical, 5)
+    }
+    func changeFolders(_ folders: [FolderReference]) { guard folders != preset.folders else { return }; history.append(preset.folders); preset.folders = folders; recount() }
+    func undo() { guard let previous = history.popLast() else { return }; preset.folders = previous; recount() }
+    func updateRecursive(_ folder: FolderReference, to recursive: Bool) {
         var next = preset.folders
-        for path in selectedTree.sorted() where !next.contains(where: { $0.path == path }) {
-            let url = URL(fileURLWithPath: path)
-            next.append(FolderReference(path: path, bookmark: try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)))
+        guard let index = next.firstIndex(where: { $0.id == folder.id }) else { return }
+        next[index].recursive = recursive
+        changeFolders(next)
+    }
+    func removeFolder(_ folder: FolderReference) {
+        changeFolders(FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: preset.folders))
+        selectedFolders.remove(folder.id)
+    }
+    func removeSelectedFolders() {
+        var next = preset.folders
+        let removals = preset.folders
+            .filter { selectedFolders.contains($0.id) }
+            .sorted { URL(fileURLWithPath: $0.path).pathComponents.count > URL(fileURLWithPath: $1.path).pathComponents.count }
+        for folder in removals {
+            next = FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: next)
         }
         changeFolders(next)
+        selectedFolders.removeAll()
+    }
+    func moveFolder(_ source: UUID?, before destination: UUID) -> Bool {
+        defer { dragging = nil }
+        guard let source,
+              let from = preset.folders.firstIndex(where: { $0.id == source }),
+              let to = preset.folders.firstIndex(where: { $0.id == destination }),
+              from != to else { return false }
+        var next = preset.folders
+        let moving = next.remove(at: from)
+        next.insert(moving, at: from < to ? to - 1 : to)
+        changeFolders(next)
+        return true
+    }
+    func browse() {
+        chooseFolders { folders in
+            var next = preset.folders
+            for folder in folders {
+                addBrowserRoot(folder)
+                if !FolderSelection.isIncluded(folder.path, in: next) {
+                    next = FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: next)
+                } else if let index = next.firstIndex(where: { $0.path == folder.path }) { next[index].bookmark = folder.bookmark }
+            }
+            access = ScopedAccess(roots)
+            changeFolders(next)
+        }
     }
     func recount() {
         countTask?.cancel(); counting = true
@@ -144,57 +242,39 @@ struct PresetEditor: View {
                 guard let url, (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else { return }
                 let folder = FolderReference(path: url.path, bookmark: try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil))
                 Task { @MainActor in
-                    guard !preset.folders.contains(where: { $0.path == folder.path }) else { return }
-                    roots.append(folder); access = ScopedAccess(roots); changeFolders(preset.folders + [folder])
+                    addBrowserRoot(folder)
+                    access = ScopedAccess(roots)
+                    guard !FolderSelection.isIncluded(folder.path, in: preset.folders) else { return }
+                    changeFolders(FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: preset.folders))
                 }
             }
         }; return true
     }
-}
 
-struct FolderTreeRow: View {
-    let url: URL
-    @Binding var selection: Set<String>
-    var initiallyExpanded = false
-    @State private var expanded = false
-    @State private var children: [URL] = []
-    @State private var count: Int?
-    var body: some View {
-        DisclosureGroup(isExpanded: $expanded) {
-            ForEach(children, id: \.path) { child in FolderTreeRow(url: child, selection: $selection).padding(.leading, 5) }
-        } label: {
-            HStack {
-                Image(systemName: "folder.fill").foregroundStyle(.tint)
-                Text(url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent).lineLimit(1)
-                Spacer()
-                if let count { Text("\(count)").font(.caption).foregroundStyle(.secondary).monospacedDigit() }
-            }.padding(6).background(selection.contains(url.path) ? Color.accentColor.opacity(0.18) : .clear, in: RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle()).onTapGesture {
-                    if NSEvent.modifierFlags.contains(.command) { if !selection.insert(url.path).inserted { selection.remove(url.path) } }
-                    else { selection = [url.path] }
-                }.help(url.path)
-        }.onChange(of: expanded) { _, value in if value { loadChildren() } }
-            .task {
-                expanded = initiallyExpanded
-                let root = url
-                let result = await Task.detached(priority: .utility) { () -> Int in
-                    let enumerator = FileManager.default.enumerator(at: root, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles, .skipsPackageDescendants])
-                    var count = 0
-                    while let url = enumerator?.nextObject() as? URL {
-                        if Catalog.extensions.contains(url.pathExtension.lowercased()), (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { count += 1 }
-                    }; return count
-                }.value
-                if !Task.isCancelled { count = result }
-            }
+    func addBrowserRoot(_ folder: FolderReference) {
+        let path = URL(fileURLWithPath: folder.path).standardizedFileURL.path
+        if let ancestor = roots.firstIndex(where: { root in
+            let rootPath = URL(fileURLWithPath: root.path).standardizedFileURL.path
+            return path == rootPath || path.hasPrefix(rootPath.hasSuffix("/") ? rootPath : rootPath + "/")
+        }) {
+            if path == URL(fileURLWithPath: roots[ancestor].path).standardizedFileURL.path { roots[ancestor] = folder }
+            return
+        }
+        roots.removeAll { root in
+            let rootPath = URL(fileURLWithPath: root.path).standardizedFileURL.path
+            return rootPath.hasPrefix(path.hasSuffix("/") ? path : path + "/")
+        }
+        roots.append(folder)
     }
-    func loadChildren() {
-        let root = url
-        Task {
-            children = await Task.detached(priority: .utility) {
-                ((try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles, .skipsPackageDescendants])) ?? [])
-                    .filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
-                    .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-            }.value
+
+    func topLevelRoots(_ folders: [FolderReference]) -> [FolderReference] {
+        folders.filter { candidate in
+            let path = URL(fileURLWithPath: candidate.path).standardizedFileURL.path
+            return !folders.contains { other in
+                guard other.id != candidate.id else { return false }
+                let otherPath = URL(fileURLWithPath: other.path).standardizedFileURL.path
+                return path.hasPrefix(otherPath.hasSuffix("/") ? otherPath : otherPath + "/")
+            }
         }
     }
 }

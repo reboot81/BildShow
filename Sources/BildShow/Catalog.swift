@@ -19,6 +19,10 @@ enum Catalog {
             var batch: [ImageItem] = []
             for case let url as URL in enumerator {
                 if Task<Never, Never>.isCancelled { return result }
+                if FolderSelection.isExcluded(url.path, from: folder, resolvedRootPath: root.path) {
+                    if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true { enumerator.skipDescendants() }
+                    continue
+                }
                 let ext = url.pathExtension.lowercased()
                 guard extensions.contains(ext) else { continue }
                 let canonical = url.resolvingSymlinksInPath().standardizedFileURL.path

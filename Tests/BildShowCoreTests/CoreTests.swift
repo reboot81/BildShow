@@ -2,6 +2,34 @@ import XCTest
 @testable import BildShowCore
 
 final class CoreTests: XCTestCase {
+    func testFolderTreeSelectionCanExcludeAndReincludeSubtrees() {
+        let root = FolderReference(path: "/Pictures")
+        var folders = [root]
+        XCTAssertTrue(FolderSelection.isIncluded("/Pictures/Birds/Owl", in: folders))
+
+        folders = FolderSelection.toggled("/Pictures/Birds", bookmark: nil, in: folders)
+        XCTAssertFalse(FolderSelection.isIncluded("/Pictures/Birds", in: folders))
+        XCTAssertFalse(FolderSelection.isIncluded("/Pictures/Birds/Owl", in: folders))
+        XCTAssertTrue(FolderSelection.isIncluded("/Pictures/Cars", in: folders))
+
+        folders = FolderSelection.toggled("/Pictures/Birds/Owl", bookmark: nil, in: folders)
+        XCTAssertTrue(FolderSelection.isIncluded("/Pictures/Birds/Owl", in: folders))
+        XCTAssertFalse(FolderSelection.isIncluded("/Pictures/Birds/Eagle", in: folders))
+    }
+
+    func testNonRecursiveFolderDoesNotSelectChildren() {
+        let root = FolderReference(path: "/Pictures", recursive: false)
+        XCTAssertTrue(FolderSelection.isIncluded("/Pictures", in: [root]))
+        XCTAssertFalse(FolderSelection.isIncluded("/Pictures/Birds", in: [root]))
+    }
+
+    func testLegacyFolderReferenceDecodesWithoutExclusions() throws {
+        let json = #"{"id":"5EB5CC40-5C61-4AD7-9D49-09DC2FA8409C","path":"/Pictures","recursive":true}"#.data(using: .utf8)!
+        let folder = try JSONDecoder().decode(FolderReference.self, from: json)
+        XCTAssertEqual(folder.path, "/Pictures")
+        XCTAssertNil(folder.excludedRelativePaths)
+    }
+
     func testPresetInheritsOnlyUnchangedSettings() {
         var defaults = Preferences(); defaults.values[Setting.interval.rawValue] = .number(3)
         var preset = Preset(name: "Birds"); preset.overrides[Setting.transition.rawValue] = .text("fade")
