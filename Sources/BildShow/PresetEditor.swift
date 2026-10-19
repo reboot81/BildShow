@@ -12,7 +12,7 @@ struct PresetEditor: View {
     @State private var access: ScopedAccess?
     @State private var selectedFolders: Set<UUID> = []
     @State private var history: [[FolderReference]] = []
-    @State private var advanced = false
+    @State private var editorSection = "folders"
     @State private var counting = false
     @State private var countResult = ScanResult()
     @State private var countTask: Task<Void, Never>?
@@ -23,9 +23,14 @@ struct PresetEditor: View {
             HStack {
                 Image(systemName: "rectangle.stack.badge.plus").font(.title2).foregroundStyle(.tint)
                 TextField(L("Presetens namn", "Preset name"), text: $preset.name).textFieldStyle(.roundedBorder).font(.title3)
-                Button { advanced.toggle() } label: { Label(L("Bildspelsinställningar", "Slideshow settings"), systemImage: "slider.horizontal.3") }
+                Picker("", selection: $editorSection) {
+                    Label(L("Mappar", "Folders"), systemImage: "folder").tag("folders")
+                    Label(L("Bildspelsinställningar", "Slideshow settings"), systemImage: "slider.horizontal.3").tag("settings")
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 390)
             }.fixedSize(horizontal: false, vertical: true).padding(20)
-            if advanced {
+            if editorSection == "settings" {
                 PlaybackSettingsEditor(values: $preset.overrides, rules: $preset.rules, portrait: $preset.portraitLayout, landscape: $preset.landscapeLayout,
                                        inherited: store.preferences, isPreset: true, demo: { demo(store.preferences.resolved(for: preset)) })
                 HStack {
@@ -61,9 +66,9 @@ struct PresetEditor: View {
                     Task { _ = await store.refresh(preset) }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(preset.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || preset.folders.isEmpty)
             }.padding(16)
-        }.frame(width: 1000, height: 690)
+        }.frame(width: 1400, height: 966)
             .onAppear {
-                roots = topLevelRoots(preset.folders); access = ScopedAccess(roots); recount()
+                roots = browserRoots(); access = ScopedAccess(preset.folders); recount()
                 monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                     if event.keyCode == 6, event.modifierFlags.contains(.control) { undo(); return nil }; return event
                 }
@@ -140,8 +145,6 @@ struct PresetEditor: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .onDrop(of: [.fileURL], isTargeted: nil, perform: dropFolders)
 
-            Text(L("Bilder visar kandidatfiler. Avbockade undermappar sparas som undantag från en vald överordnad mapp.", "Images shows candidate files. Unchecked subfolders are saved as exclusions from a selected parent folder."))
-                .font(.caption).foregroundStyle(.secondary)
         }
         .frame(minWidth: 500, maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -223,7 +226,7 @@ struct PresetEditor: View {
                     next = FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: next)
                 } else if let index = next.firstIndex(where: { $0.path == folder.path }) { next[index].bookmark = folder.bookmark }
             }
-            access = ScopedAccess(roots)
+            access = ScopedAccess(next)
             changeFolders(next)
         }
     }
@@ -243,7 +246,7 @@ struct PresetEditor: View {
                 let folder = FolderReference(path: url.path, bookmark: try? url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil))
                 Task { @MainActor in
                     addBrowserRoot(folder)
-                    access = ScopedAccess(roots)
+                    access = ScopedAccess(preset.folders + [folder])
                     guard !FolderSelection.isIncluded(folder.path, in: preset.folders) else { return }
                     changeFolders(FolderSelection.toggled(folder.path, bookmark: folder.bookmark, in: preset.folders))
                 }
@@ -276,5 +279,27 @@ struct PresetEditor: View {
                 return path.hasPrefix(otherPath.hasSuffix("/") ? otherPath : otherPath + "/")
             }
         }
+    }
+
+    func browserRoots() -> [FolderReference] {
+        let keys: [URLResourceKey] = [.volumeIsBrowsableKey, .volumeNameKey]
+        let mounted = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: keys,
+            options: [.skipHiddenVolumes]
+        ) ?? []
+        let urls = mounted.filter {
+            (try? $0.resourceValues(forKeys: Set(keys)).volumeIsBrowsable) != false
+        }
+        let available = urls.isEmpty ? [URL(fileURLWithPath: "/")] : urls
+        var seen = Set<String>()
+        return available
+            .filter { seen.insert($0.standardizedFileURL.path).inserted }
+            .sorted { left, right in
+                if left.path == "/" { return true }
+                if right.path == "/" { return false }
+                return FileManager.default.displayName(atPath: left.path)
+                    .localizedStandardCompare(FileManager.default.displayName(atPath: right.path)) == .orderedAscending
+            }
+            .map { FolderReference(path: $0.path) }
     }
 }

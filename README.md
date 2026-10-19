@@ -8,7 +8,7 @@ Create a preset, add folders, and click its card to start. Images remain in thei
 
 ## Features
 
-- Two-pane folder selection: the preset's selected folders on the left and a CCC-style hierarchy with checkboxes, disclosure rows, image counts and modification dates on the right. Includes subtree exclusions, drag and drop, and undo.
+- Two-pane folder selection: the preset's selected folders on the left and all Finder-visible mounted disks in a CCC-style hierarchy with checkboxes, disclosure rows, image counts and modification dates on the right. Includes subtree exclusions, drag and drop, and undo.
 - Full screen on the app's display, optional display selection and windowed playback.
 - Direct cuts, crossfades and fades through the background.
 - Proportional fit, fill, width, height and smart cropping, with separate portrait/landscape choices.
@@ -25,12 +25,12 @@ The default interval is 2.5 seconds, including a 0.5-second crossfade. Shuffle i
 
 ## Quick start
 
-1. Choose **New preset**, enter a name, and click **Browse**.
-2. Select a folder to grant access. Select folders in the right-hand tree and click **«** to include them.
+1. Choose **New preset** and enter a name.
+2. Expand a disk in the right-hand tree and check the folders to include.
 3. Save the preset, then click its card.
 4. Use Space to pause, arrow keys to navigate or change the interval, and Esc to end.
 
-The folder tree shows recursive candidate-file counts before format and dimension filters. The bottom total and preset cards show indexed images after filtering. Overlapping folders are deduplicated.
+The folder tree shows candidate files directly inside each visible folder before dimension filters. The bottom total and preset cards show indexed images after recursive scanning and filtering. Overlapping folders are deduplicated.
 
 ## Default keys
 
@@ -53,9 +53,9 @@ Bindings can be changed in Settings. Esc always remains an exit key. Folder edit
 
 ## Privacy and persistence
 
-BildShow runs in App Sandbox with hardened runtime. It requests access through the standard folder picker and stores security-scoped bookmarks. It has no network entitlement, analytics, account or cloud service. No Full Disk Access is required.
+BildShow is a hardened, notarized Developer ID application. It is distributed outside the Mac App Store without App Sandbox so its folder tree can browse Finder-visible internal, external and network volumes. Standard macOS privacy controls still protect restricted locations. BildShow has no analytics, account or cloud service and does not make network requests.
 
-Preferences and one JSON directory per preset live in the app's Application Support/BildShow directory. Image indexes and demo derivatives live in Caches/BildShow. About shows the actual paths. Exported presets omit access bookmarks; after importing, browse to their folders again to grant access. Exports contain folder paths and preset state, so review them before sharing.
+Preferences and one JSON directory per preset live in the app's Application Support/BildShow directory. Image indexes and demo derivatives live in Caches/BildShow. About shows the actual paths. Exported presets omit legacy access bookmarks but retain folder paths; use the editor to replace paths that do not exist on the importing Mac. Exports contain folder paths and preset state, so review them before sharing.
 
 Cleanup uses macOS Trash and checks that an indexed original has not changed before moving it. Taking an image out of a preset does not remove it from disk. Trash behavior depends on the volume.
 
@@ -69,7 +69,7 @@ swift test
 open build/BildShow.app
 ```
 
-The script builds arm64 only and creates a locally signed sandboxed application. For Developer ID distribution, set `SIGN_IDENTITY` to your installed Developer ID Application identity. See [release instructions](docs/RELEASING.md).
+The script builds arm64 only and creates a locally signed hardened application. For Developer ID distribution, set `SIGN_IDENTITY` to your installed Developer ID Application identity. See [release instructions](docs/RELEASING.md).
 
 ## Verification and limits
 

@@ -102,8 +102,10 @@ final class PlaybackWindow: NSWindow {
         let window = PlaybackWindow(contentRect: frame, styleMask: fullscreen ? [.borderless] : [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false, screen: screen)
         window.title = preset?.name ?? L("BildShow – Demo", "BildShow – Demo")
         window.delegate = self; window.isReleasedWhenClosed = false; window.backgroundColor = .black; window.acceptsMouseMovedEvents = true
+        window.isOpaque = true; window.hasShadow = !fullscreen
         window.collectionBehavior = [.fullScreenPrimary]
         let surface = PlayerSurface(frame: CGRect(origin: .zero, size: frame.size), renderer: renderer!, action: { [weak self] in self?.perform($0) }, keyboard: { [weak self] in self?.key($0) }, mouse: { [weak self] in self?.mouse($0) })
+        surface.autoresizingMask = [.width, .height]
         self.window = window; self.surface = surface; window.contentView = surface
         oldPresentation = NSApp.presentationOptions
         if fullscreen { NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar] }
@@ -263,6 +265,7 @@ final class PlaybackWindow: NSWindow {
         guard let window, let screen = window.screen else { return }
         fullscreen.toggle()
         window.styleMask = fullscreen ? [.borderless] : [.titled, .closable, .resizable, .miniaturizable]
+        window.hasShadow = !fullscreen
         NSApp.presentationOptions = fullscreen ? [.autoHideDock, .autoHideMenuBar] : oldPresentation
         window.setFrame(fullscreen ? screen.frame : CGRect(x: screen.visibleFrame.midX - 600, y: screen.visibleFrame.midY - 375, width: 1200, height: 750), display: true)
         window.makeFirstResponder(surface); rerender()

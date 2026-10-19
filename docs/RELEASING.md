@@ -23,4 +23,4 @@
 6. Verify `codesign --verify --deep --strict`, `xcrun stapler validate`, and `spctl --assess --type execute --verbose=2` on the final app.
 7. Package with `ditto -c -k --sequesterRsrc --keepParent`, compute SHA-256 and upload the ZIP to the matching GitHub release. Do not publish an unnotarized build as a notarized release.
 
-The app uses App Sandbox, user-selected read/write access for optional Trash operations, app-scoped bookmarks, and hardened runtime. No JIT, library-validation exemption, debugger entitlement or network entitlement is needed.
+The app uses hardened runtime without App Sandbox so its folder tree can browse Finder-visible mounted volumes. Standard macOS privacy controls still protect restricted locations. No JIT, library-validation exemption, debugger entitlement or network entitlement is used.

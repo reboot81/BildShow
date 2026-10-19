@@ -51,7 +51,16 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(layout.scale, 3)
         XCTAssertEqual(layout.width, 720)
         XCTAssertEqual(layout.height, 1080)
-        XCTAssertEqual(layout.rule.featherPercent, 0.5)
+        XCTAssertEqual(layout.rule.featherPercent, 4)
+    }
+    func testSmallerImagesUseProgressivelySofterEdges() {
+        let rules = SizeRule.defaults
+        XCTAssertLessThan(rules[0].featherPercent, rules[1].featherPercent)
+        XCTAssertLessThan(rules[1].featherPercent, rules[2].featherPercent)
+        XCTAssertLessThan(rules[2].featherPercent, rules[3].featherPercent)
+    }
+    func testFullscreenIsEnabledByDefault() {
+        XCTAssertTrue(Preferences()[.fullscreen].bool)
     }
     func testPortraitIsNotAggressivelyCroppedBySmartDefault() {
         let layout = ImageLayout.calculate(width: 2400, height: 3600, screenWidth: 3840, screenHeight: 2160, settings: Preferences())

@@ -52,6 +52,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         let device = ImagePipeline.shared.device
         view = MTKView(frame: .zero, device: device)
         view.colorPixelFormat = .bgra8Unorm; view.framebufferOnly = false; view.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+        view.wantsLayer = true; view.layer?.borderWidth = 0
         view.enableSetNeedsDisplay = true; view.isPaused = true; view.preferredFramesPerSecond = 60
         queue = device.makeCommandQueue()!
         let library = try device.makeLibrary(source: shaderSource, options: nil)

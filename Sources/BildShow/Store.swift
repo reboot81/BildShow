@@ -14,11 +14,33 @@ import BildShowCore
     private var scanTasks: [UUID: Task<ScanResult, Never>] = [:]
     private var revisions: [UUID: UUID] = [:]
     init() {
-        base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("BildShow")
-        cache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("BildShow")
+        let standardBase = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("BildShow")
+        let standardCache = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("BildShow")
+        let containerLibrary = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Containers/se.bosaurage.BildShow/Data/Library", isDirectory: true)
+        let legacyBase = containerLibrary.appendingPathComponent("Application Support/BildShow", isDirectory: true)
+        let legacyCache = containerLibrary.appendingPathComponent("Caches/BildShow", isDirectory: true)
+        if Self.containsSavedData(legacyBase) {
+            base = legacyBase; cache = legacyCache
+        } else {
+            base = standardBase; cache = standardCache
+        }
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
-        if let data = try? Data(contentsOf: base.appendingPathComponent("preferences.json")), let prefs = try? JSONDecoder().decode(Preferences.self, from: data) { preferences = prefs }
+        var migratedPreferences = false
+        if let data = try? Data(contentsOf: base.appendingPathComponent("preferences.json")), var prefs = try? JSONDecoder().decode(Preferences.self, from: data) {
+            if prefs.rules == Self.previousDefaultRules {
+                prefs.rules = SizeRule.defaults
+                migratedPreferences = true
+            }
+            preferences = prefs
+        }
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "BildShowAppliedFullscreenDefaultV2") {
+            preferences.values[Setting.fullscreen.rawValue] = .bool(true)
+            defaults.set(true, forKey: "BildShowAppliedFullscreenDefaultV2")
+            migratedPreferences = true
+        }
         let folders = (try? FileManager.default.contentsOfDirectory(at: base, includingPropertiesForKeys: nil)) ?? []
         for folder in folders where folder.hasDirectoryPath {
             if let data = try? Data(contentsOf: folder.appendingPathComponent("preset.json")), let preset = try? JSONDecoder().decode(Preset.self, from: data) {
@@ -29,7 +51,20 @@ import BildShowCore
         if let data = try? Data(contentsOf: base.appendingPathComponent("order.json")), let ids = try? JSONDecoder().decode([UUID].self, from: data) {
             presets.sort { (ids.firstIndex(of: $0.id) ?? Int.max) < (ids.firstIndex(of: $1.id) ?? Int.max) }
         } else { presets.sort { $0.name < $1.name } }
+        if migratedPreferences { write(preferences, to: base.appendingPathComponent("preferences.json")) }
     }
+    private static func containsSavedData(_ url: URL) -> Bool {
+        let manager = FileManager.default
+        if manager.fileExists(atPath: url.appendingPathComponent("preferences.json").path) { return true }
+        let entries = (try? manager.contentsOfDirectory(at: url, includingPropertiesForKeys: nil)) ?? []
+        return entries.contains { manager.fileExists(atPath: $0.appendingPathComponent("preset.json").path) }
+    }
+    private static let previousDefaultRules: [SizeRule] = [
+        .init(id: "reduce", upperScale: 1, maxScale: 1, method: "lanczos", sharpening: 0, featherPercent: 2),
+        .init(id: "near", upperScale: 1.25, maxScale: 1.25, method: "bicubic", sharpening: 0, featherPercent: 2),
+        .init(id: "medium", upperScale: 2, maxScale: 2, method: "bicubic", sharpening: 0.12, featherPercent: 1),
+        .init(id: "small", upperScale: 100000, maxScale: 3, method: "lanczos", sharpening: 0.2, featherPercent: 0.5)
+    ]
     func write<T: Encodable & Sendable>(_ value: T, to url: URL) {
         writer.async {
             do {

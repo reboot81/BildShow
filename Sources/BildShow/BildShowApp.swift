@@ -53,14 +53,6 @@ struct MainView: View {
     private var filtered: [Preset] { store.presets.filter { search.isEmpty || $0.name.localizedCaseInsensitiveContains(search) } }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(L("Dina bildspel", "Your slideshows")).font(.largeTitle.weight(.bold))
-                    Text(L("Samla mappar. Välj en preset. Låt bilderna ta plats.", "Gather folders. Choose a preset. Let your images take the stage.")).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if player.starting { ProgressView().controlSize(.small) }
-            }.padding(28)
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 210, maximum: 320), spacing: 16)], spacing: 16) {
                     Button { editing = Preset() } label: {
@@ -73,21 +65,32 @@ struct MainView: View {
                             .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Color.accentColor.opacity(0.25), style: StrokeStyle(lineWidth: 1, dash: [5, 4])))
                     }.buttonStyle(.plain)
                     ForEach(filtered) { preset in
-                        VStack(spacing: 0) {
+                        ZStack(alignment: .bottomTrailing) {
                             Button { player.start(preset) } label: {
-                                VStack(spacing: 12) {
-                                    HStack { Image(systemName: "play.fill").font(.title2).foregroundStyle(.tint); Spacer(); Image(systemName: "rectangle.stack").foregroundStyle(.tertiary) }
-                                    Text(preset.name).font(.title3.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
-                                }.padding(20).frame(maxWidth: .infinity).frame(height: 108)
+                                VStack(spacing: 0) {
+                                    VStack(spacing: 12) {
+                                        HStack { Image(systemName: "play.fill").font(.title2).foregroundStyle(.tint); Spacer(); Image(systemName: "rectangle.stack").foregroundStyle(.tertiary) }
+                                        Text(preset.name).font(.title3.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading).lineLimit(2)
+                                    }.padding(20).frame(maxWidth: .infinity).frame(height: 108)
+                                    Divider()
+                                    HStack {
+                                        Text("\(preset.folders.count) / \(store.imageCount(preset))").monospacedDigit()
+                                            .help(L("Mappar / bilder", "Folders / images"))
+                                        if store.scanning.contains(preset.id) { ProgressView().controlSize(.mini) }
+                                        Spacer()
+                                    }
+                                    .font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).padding(.trailing, 30).frame(height: 42)
+                                }
                             }.buttonStyle(.plain).disabled(player.starting)
-                            Divider()
-                            HStack {
-                                Text("\(preset.folders.count) / \(store.imageCount(preset))").monospacedDigit()
-                                    .help(L("Mappar / bilder", "Folders / images"))
-                                if store.scanning.contains(preset.id) { ProgressView().controlSize(.mini) }
-                                Spacer()
-                                Menu { presetMenu(preset) } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 24)
-                            }.font(.caption).foregroundStyle(.secondary).padding(.horizontal, 16).frame(height: 42)
+                            Menu { presetMenu(preset) } label: {
+                                Image(systemName: "ellipsis.circle").font(.body)
+                            }
+                            .menuStyle(.borderlessButton)
+                            .menuIndicator(.hidden)
+                            .frame(width: 28, height: 28)
+                            .padding(.trailing, 10)
+                            .padding(.bottom, 7)
+                            .help(L("Fler åtgärder", "More actions"))
                         }.background(.background, in: RoundedRectangle(cornerRadius: 16))
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.primary.opacity(0.08)))
                             .contextMenu { presetMenu(preset) }
@@ -97,7 +100,7 @@ struct MainView: View {
                                 let value = store.presets.remove(at: from); store.presets.insert(value, at: to); store.saveOrder(); self.dragging = nil; return true
                             }
                     }
-                }.padding(.horizontal, 28).padding(.bottom, 28)
+                }.padding(.horizontal, 28).padding(.vertical, 28)
                 if store.presets.isEmpty {
                     VStack(spacing: 10) {
                         Text(L("Bilderna stannar i dina mappar", "Your images stay in their folders")).font(.headline)
@@ -111,10 +114,12 @@ struct MainView: View {
                 Label("\(store.presets.count) " + L("presets", "presets"), systemImage: "rectangle.stack").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 if !store.logs.isEmpty { Button { openWindow(id: "log") } label: { Label("\(store.logs.count)", systemImage: "list.bullet.rectangle") }.buttonStyle(.borderless) }
-                Text(L("Apple Silicon · Lokala bilder", "Apple Silicon · Local images")).font(.caption).foregroundStyle(.tertiary)
             }.padding(.horizontal, 24).padding(.vertical, 12)
         }.background(Color(nsColor: .windowBackgroundColor))
             .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { openWindow(id: "about") } label: { Label(L("Om BildShow", "About BildShow"), systemImage: "info.circle") }
+                }
                 ToolbarItem { Button { store.importPreset() } label: { Label(L("Importera", "Import"), systemImage: "square.and.arrow.down") } }
                 ToolbarItem { Button { cleanupID = nil; cleanup = true } label: { Label(L("Städa", "Cleanup"), systemImage: "trash") } }
                 ToolbarItem { Button { openSettings() } label: { Label(L("Inställningar", "Settings"), systemImage: "gearshape") } }
@@ -130,7 +135,7 @@ struct MainView: View {
             }
     }
     @ViewBuilder func presetMenu(_ preset: Preset) -> some View {
-        Button(L("Redigera / byt namn…", "Edit / rename…")) { editing = preset }
+        Button(L("Redigera…", "Edit…")) { editing = preset }
         Button(L("Börja om", "Start over")) { player.start(preset, restart: true) }
         Button(L("Duplicera", "Duplicate")) { store.duplicate(preset) }
         Button(L("Uppdatera bildlista", "Refresh image list")) { Task { _ = await store.refresh(preset) } }
@@ -158,15 +163,24 @@ struct MainView: View {
 
 struct AboutView: View {
     @ObservedObject var store: AppStore
+    @State private var showsCredits = false
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(spacing: 18) {
-                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 80, height: 80)
-                VStack(alignment: .leading) { Text("BildShow").font(.largeTitle.bold()); Text("Version 0.1.0 (1)").foregroundStyle(.secondary) }
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable().frame(width: 80, height: 80)
+                    .contentShape(Rectangle())
+                    .onTapGesture(count: 3) { NSSound.beep(); showsCredits = true }
+                    .accessibilityLabel(L("BildShow-ikon", "BildShow icon"))
+                    .accessibilityHint(L("Trippelklicka för retrocredits", "Triple-click for retro credits"))
+                VStack(alignment: .leading) {
+                    Text("BildShow").font(.largeTitle.bold())
+                    Text("Version \(version) (\(build))").foregroundStyle(.secondary)
+                }
             }
             Text(L("BildShow visar dina bilder i lugna, flytande bildspel. Samla flera mappar i presets och anpassa visningen för föreläsningar, mässor eller en stund med dina bilder.", "BildShow presents your images in calm, fluid slideshows. Collect folders into presets and tailor playback for lectures, exhibitions, or time with your photographs."))
             GroupBox(L("Integritet", "Privacy")) {
-                Text(L("BildShow arbetar lokalt. Bilder och filnamn skickas inte till någon server. Appen använder mappar du ger åtkomst till. Original flyttas till Papperskorgen endast genom städfunktionen efter ditt val.", "BildShow works locally. Images and filenames are not sent to any server. The app uses folders you authorize. Originals are moved to Trash only through the cleanup function after your selection."))
+                Text(L("BildShow arbetar lokalt. Bilder och filnamn skickas inte till någon server. Appen använder mappar du väljer. Original flyttas till Papperskorgen endast genom städfunktionen efter ditt val.", "BildShow works locally. Images and filenames are not sent to any server. The app uses folders you select. Originals are moved to Trash only through the cleanup function after your selection."))
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             GroupBox(L("Relevanta filer", "Relevant files")) {
@@ -175,13 +189,89 @@ struct AboutView: View {
             }
             GroupBox(L("Teknisk status", "Technical status")) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("macOS 14+ · Apple Silicon · Image I/O · Core Image · Metal")
-                    Text("GPU: \(ImagePipeline.shared.device.name)")
+                    Text(L("Bildmotor: Image I/O · Core Image · Metal", "Image engine: Image I/O · Core Image · Metal"))
+                    Text(L("Bearbetning och cache: lokalt på datorn", "Processing and cache: local"))
                     Text(L("Demoporträttet är AI-genererat. Ingen AI används vid bildvisning.", "The demo portrait is AI-generated. Slideshow playback does not use AI."))
                 }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
             }
             HStack { Text("© 2026 Bo Saurage").foregroundStyle(.secondary); Spacer(); Link("GitHub", destination: URL(string: "https://github.com/reboot81/BildShow")!) }
             Spacer(minLength: 0)
         }.padding(28)
+            .sheet(isPresented: $showsCredits) { BildShowRetroCredits(isPresented: $showsCredits) }
+    }
+
+    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—" }
+    private var build: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—" }
+}
+
+private struct BildShowRetroCredits: View {
+    @Binding var isPresented: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var startDate = Date.now
+    private let credits: [(String, Color)] = [
+        ("*** BILDSHOW ***", .green),
+        ("", .white),
+        ("DESIGN & DEVELOPMENT", .white),
+        ("REBOOT81", .cyan),
+        ("", .white),
+        ("SWIFT · SWIFTUI · APPKIT · METAL", .cyan),
+        ("LOCAL IMAGES · CALM TRANSITIONS", .cyan),
+        ("", .white),
+        ("BUILT FOR BIG SCREENS", .white),
+        ("& SMALL MOMENTS", .orange),
+        ("", .white),
+        ("— THANKS FOR WATCHING —", .green)
+    ]
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            GeometryReader { geometry in
+                if reduceMotion {
+                    creditsContent.frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
+                        creditsContent.offset(y: offset(in: geometry.size, at: timeline.date))
+                    }
+                }
+            }
+            Button { isPresented = false } label: {
+                Image(systemName: "xmark").font(.system(.body, design: .monospaced, weight: .bold))
+            }
+            .buttonStyle(.plain).foregroundStyle(.red).padding(14)
+            .accessibilityLabel(L("Stäng credits", "Close credits"))
+        }
+        .frame(width: 520, height: 380)
+        .background(.black)
+        .onExitCommand { isPresented = false }
+        .onAppear { startDate = .now }
+    }
+    private var creditsContent: some View {
+        ZStack {
+            Canvas { context, size in
+                for index in 0..<72 {
+                    let x = CGFloat((index * 83 + 17) % 503) / 503 * size.width
+                    let y = CGFloat((index * 47 + 29) % 367) / 367 * size.height
+                    let side: CGFloat = index.isMultiple(of: 7) ? 2 : 1
+                    context.fill(Path(CGRect(x: x, y: y, width: side, height: side)), with: .color(.white.opacity(index.isMultiple(of: 5) ? 0.85 : 0.45)))
+                }
+            }
+            VStack(spacing: 17) {
+                ForEach(Array(credits.enumerated()), id: \.offset) { _, credit in
+                    Text(credit.0).font(.system(size: 15, weight: .bold, design: .monospaced))
+                        .foregroundStyle(credit.1).shadow(color: credit.1.opacity(0.7), radius: 3).frame(height: 18)
+                }
+            }.frame(maxWidth: .infinity)
+            Canvas { context, size in
+                var path = Path()
+                for y in stride(from: CGFloat.zero, through: size.height, by: 4) {
+                    path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y))
+                }
+                context.stroke(path, with: .color(.black.opacity(0.28)), lineWidth: 1)
+            }.allowsHitTesting(false)
+        }
+    }
+    private func offset(in size: CGSize, at date: Date) -> CGFloat {
+        let contentHeight: CGFloat = 420
+        let travel = size.height + contentHeight
+        return size.height - CGFloat((date.timeIntervalSince(startDate) * 32).truncatingRemainder(dividingBy: travel))
     }
 }

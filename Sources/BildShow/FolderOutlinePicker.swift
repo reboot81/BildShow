@@ -5,15 +5,19 @@ import BildShowCore
 private final class FolderTreeNode: @unchecked Sendable {
     let url: URL
     let bookmark: Data?
+    let isVolumeRoot: Bool
+    let displayName: String
     var children: [FolderTreeNode]?
     var isLoading = false
     var candidateCount: Int?
     var isCounting = false
     let modified: Date?
 
-    init(url: URL, bookmark: Data?) {
+    init(url: URL, bookmark: Data?, isVolumeRoot: Bool = false) {
         self.url = url
         self.bookmark = bookmark
+        self.isVolumeRoot = isVolumeRoot
+        self.displayName = FileManager.default.displayName(atPath: url.path)
         self.modified = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
     }
 }
@@ -94,7 +98,7 @@ struct FolderOutlinePicker: NSViewRepresentable {
                 let resolved = reference.bookmark.flatMap {
                     try? URL(resolvingBookmarkData: $0, options: [.withSecurityScope, .withoutUI], relativeTo: nil, bookmarkDataIsStale: &stale)
                 } ?? URL(fileURLWithPath: reference.path)
-                return FolderTreeNode(url: resolved, bookmark: reference.bookmark)
+                return FolderTreeNode(url: resolved, bookmark: reference.bookmark, isVolumeRoot: true)
             }
             outline?.reloadData()
             DispatchQueue.main.async { [weak self] in
@@ -137,14 +141,14 @@ struct FolderOutlinePicker: NSViewRepresentable {
                 cell.checkbox.action = #selector(toggleFolder(_:))
                 cell.checkbox.toolTip = L("Ta med eller uteslut mappen", "Include or exclude this folder")
                 cell.icon.image = NSWorkspace.shared.icon(forFile: node.url.path)
-                cell.name.stringValue = node.url.lastPathComponent.isEmpty ? node.url.path : node.url.lastPathComponent
+                cell.name.stringValue = node.displayName
                 cell.name.toolTip = node.url.path
                 return cell
             case .images:
                 let cell = textCell(in: outlineView, identifier: .imagesCell)
                 cell.textField?.alignment = .right
-                cell.textField?.stringValue = node.candidateCount.map(String.init) ?? "…"
-                startCounting(node)
+                cell.textField?.stringValue = node.isVolumeRoot ? "—" : node.candidateCount.map(String.init) ?? "…"
+                if !node.isVolumeRoot { startCounting(node) }
                 return cell
             default:
                 let cell = textCell(in: outlineView, identifier: .modifiedCell)
@@ -188,16 +192,15 @@ struct FolderOutlinePicker: NSViewRepresentable {
             node.isCounting = true
             let url = node.url
             counter.addOperation { [weak self, weak node] in
-                let enumerator = FileManager.default.enumerator(
+                let files = (try? FileManager.default.contentsOfDirectory(
                     at: url,
                     includingPropertiesForKeys: [.isRegularFileKey],
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
-                )
-                var count = 0
-                while let file = enumerator?.nextObject() as? URL {
-                    if Catalog.extensions.contains(file.pathExtension.lowercased()),
-                       (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true { count += 1 }
-                }
+                )) ?? []
+                let count = files.filter {
+                    Catalog.extensions.contains($0.pathExtension.lowercased()) &&
+                    (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+                }.count
                 DispatchQueue.main.async {
                     guard let self, let node else { return }
                     node.candidateCount = count

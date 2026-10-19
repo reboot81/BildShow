@@ -39,21 +39,32 @@ struct PlaybackSettingsEditor: View {
                         HStack {
                             Text(L("Max förstoring", "Maximum enlargement"))
                             Spacer()
-                            Stepper(value: ruleBinding(index, \.maxScale), in: 1...8, step: 0.25) {
-                                Text("\((rules ?? inherited.rules)[index].maxScale, specifier: "%.2g")×").monospacedDigit()
-                            }.frame(width: 150)
+                            TextField("", value: ruleBinding(index, \.maxScale), format: .number.precision(.fractionLength(0...2)))
+                                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 72)
+                            Text("×")
+                            Stepper("", value: ruleBinding(index, \.maxScale), in: 1...8, step: 0.25).labelsHidden()
                         }
                         if rule.id != "small" {
                             HStack {
                                 Text(L("Klassens övre skalfaktor", "Class upper scale factor")); Spacer()
-                                TextField("", value: ruleBinding(index, \.upperScale), format: .number).frame(width: 80)
+                                TextField("", value: ruleBinding(index, \.upperScale), format: .number.precision(.fractionLength(0...2)))
+                                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 72)
+                                Stepper("", value: ruleBinding(index, \.upperScale), in: 0.25...8, step: 0.25).labelsHidden()
                             }
                         }
                         Picker(L("Skalningsmetod", "Resampling"), selection: methodBinding(index)) {
                             Text("Lanczos").tag("lanczos"); Text(L("Bikubisk", "Bicubic")).tag("bicubic"); Text(L("Bilinjär (snabb)", "Bilinear (fast)")).tag("linear")
                         }
-                        HStack { Text(L("Skärpning", "Sharpening")); Slider(value: ruleBinding(index, \.sharpening), in: 0...0.8); Text("\((rules ?? inherited.rules)[index].sharpening, specifier: "%.2f")").monospacedDigit().frame(width: 40) }
-                        HStack { Text(L("Kanttoning (%)", "Edge feather (%)")); Slider(value: ruleBinding(index, \.featherPercent), in: 0...8); Text("\((rules ?? inherited.rules)[index].featherPercent, specifier: "%.1f")").monospacedDigit().frame(width: 40) }
+                        HStack {
+                            Text(L("Skärpning", "Sharpening")); Slider(value: ruleBinding(index, \.sharpening), in: 0...0.8)
+                            TextField("", value: ruleBinding(index, \.sharpening), format: .number.precision(.fractionLength(2)))
+                                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 64)
+                        }
+                        HStack {
+                            Text(L("Kanttoning (%)", "Edge feather (%)")); Slider(value: ruleBinding(index, \.featherPercent), in: 0...8)
+                            TextField("", value: ruleBinding(index, \.featherPercent), format: .number.precision(.fractionLength(1)))
+                                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 64)
+                        }
                     }.disabled(isPreset && rules == nil)
                 }
             }
@@ -83,15 +94,35 @@ struct PlaybackSettingsEditor: View {
                 }
             } else {
                 Text(key.title); Spacer()
-                TextField("", value: Binding(get: { value(key).number }, set: { values[key.rawValue] = .number(min(key.range.upperBound, max(key.range.lowerBound, $0.isFinite ? $0 : key.initial.number))) }), format: .number)
-                    .multilineTextAlignment(.trailing).frame(width: 85)
+                TextField("", value: numberBinding(key), format: .number.precision(.fractionLength(0...2)))
+                    .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 85)
+                Stepper("", value: numberBinding(key), in: key.range, step: numberStep(key)).labelsHidden()
             }
             if isPreset {
                 Button { values.removeValue(forKey: key.rawValue) } label: {
                     Image(systemName: values[key.rawValue] == nil ? "link" : "arrow.uturn.backward")
-                }.buttonStyle(.borderless).disabled(values[key.rawValue] == nil)
-                    .help(L("Återgå till programmets standard", "Use application default"))
+                }
+                .buttonStyle(.borderless)
+                .help(values[key.rawValue] == nil
+                    ? L("Länkad till programmets standardvärde. Ändra kontrollen för att skapa ett eget värde för preseten.", "Linked to the application default. Change the control to create a preset-specific value.")
+                    : L("Återställ länken till programmets standardvärde", "Restore the link to the application default"))
             }
+        }
+    }
+    func numberBinding(_ key: Setting) -> Binding<Double> {
+        Binding(
+            get: { value(key).number },
+            set: { number in
+                let finite = number.isFinite ? number : key.initial.number
+                values[key.rawValue] = .number(min(key.range.upperBound, max(key.range.lowerBound, finite)))
+            }
+        )
+    }
+    func numberStep(_ key: Setting) -> Double {
+        switch key {
+        case .interval, .transitionDuration: return 0.25
+        case .cropLimit, .prefetch, .minShort, .minLong: return 1
+        default: return 0.1
         }
     }
     func orientationPicker(_ title: String, value: Binding<String?>) -> some View {
