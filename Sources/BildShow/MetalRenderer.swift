@@ -48,6 +48,7 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
     private var duration = 0.0
     private var mode = "crossfade"
     private var background: SIMD4<Float> = [0, 0, 0, 1]
+    private var retryWork: DispatchWorkItem?
     init(preparing: Bool = true) throws {
         let device = ImagePipeline.shared.device
         view = MTKView(frame: .zero, device: device)
@@ -64,15 +65,23 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         super.init(); view.delegate = self
     }
     func show(_ frame: PreparedFrame, duration: Double, mode: String, background: String) {
+        retryWork?.cancel(); retryWork = nil
         first = second ?? frame; second = frame
         self.duration = duration; self.mode = mode; started = CACurrentMediaTime()
         switch background { case "white": self.background = [1,1,1,1]; case "gray": self.background = [0.075,0.075,0.075,1]; default: self.background = [0,0,0,1] }
         view.isPaused = duration <= 0; view.needsDisplay = true
     }
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
+    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
+        if second != nil { view.needsDisplay = true }
+    }
     func draw(in view: MTKView) {
-        guard let first, let second, let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
-              let command = queue.makeCommandBuffer(), let encoder = command.makeRenderCommandEncoder(descriptor: pass) else { return }
+        guard let first, let second else { return }
+        guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
+              let command = queue.makeCommandBuffer(), let encoder = command.makeRenderCommandEncoder(descriptor: pass) else {
+            scheduleRetry()
+            return
+        }
+        retryWork?.cancel(); retryWork = nil
         let progress = duration <= 0 ? 1 : min(1, (CACurrentMediaTime() - started) / duration)
         var uniforms = FrameUniforms(rectA: first.rect, rectB: second.rect, edgesA: first.edges, edgesB: second.edges,
                                      background: background, timing: SIMD4(Float(progress), mode == "fade" ? 1 : 0, first.feather, second.feather),
@@ -84,4 +93,15 @@ final class MetalRenderer: NSObject, MTKViewDelegate {
         encoder.endEncoding(); command.present(drawable); command.commit()
         if progress >= 1 { self.first = second; view.isPaused = true }
     }
+    private func scheduleRetry() {
+        guard retryWork == nil else { return }
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.retryWork = nil
+            self.view.needsDisplay = true
+        }
+        retryWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: work)
+    }
+    deinit { retryWork?.cancel() }
 }

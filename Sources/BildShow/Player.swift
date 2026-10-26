@@ -121,13 +121,18 @@ final class PlaybackWindow: NSWindow {
         self.window = window; self.surface = surface; window.contentView = surface
         oldPresentation = NSApp.presentationOptions
         if fullscreen { NSApp.presentationOptions = [.autoHideDock, .autoHideMenuBar] }
+        window.setFrame(frame, display: false)
         window.makeKeyAndOrderFront(nil); window.makeFirstResponder(surface)
+        window.contentView?.layoutSubtreeIfNeeded(); window.displayIfNeeded()
         starting = false; isPlaying = true; paused = settings[.manual].bool; failed = []; undoMarks = []
         captionMode = settings[.filenameAlways].bool ? .filename : .hidden
         overrideScale = nil
         IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "BildShow slideshow" as CFString, &assertion)
         surface.message(L("Förbereder bilder…", "Preparing images…"), duration: 10)
-        advance(1, manual: true)
+        DispatchQueue.main.async { [weak self, weak window] in
+            guard let self, self.isPlaying, self.window === window else { return }
+            self.advance(1, manual: true)
+        }
     }
     func perform(_ action: PlayerAction) {
         switch action {
@@ -291,6 +296,15 @@ final class PlaybackWindow: NSWindow {
         window.makeFirstResponder(surface); rerender()
     }
     func windowDidResize(_ notification: Notification) { if isPlaying { rerender() } }
+    func windowDidChangeScreen(_ notification: Notification) { if isPlaying { rerenderAfterDisplayChange() } }
+    func windowDidChangeBackingProperties(_ notification: Notification) { if isPlaying { rerenderAfterDisplayChange() } }
+    private func rerenderAfterDisplayChange() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isPlaying else { return }
+            self.window?.contentView?.layoutSubtreeIfNeeded()
+            self.rerender()
+        }
+    }
     func windowWillClose(_ notification: Notification) { stop(closeWindow: false) }
     func stop(closeWindow: Bool = true) {
         let wasPlaying = isPlaying
