@@ -8,7 +8,7 @@ public enum SettingValue: Codable, Equatable, Sendable {
 }
 
 public enum Setting: String, CaseIterable, Codable, Sendable {
-    case fullscreen, interval, transitionDuration, transition, ending, random, manual
+    case fullscreen, interval, transitionDuration, transition, ending, random, manual, hudDuration
     case layout, cropLimit, placement, cropAnchor, includeGIF, minShort, minLong
     case feather, background, prefetch, filenameAlways
     public var initial: SettingValue {
@@ -17,6 +17,7 @@ public enum Setting: String, CaseIterable, Codable, Sendable {
         case .manual, .includeGIF, .filenameAlways: return .bool(false)
         case .interval: return .number(2.5)
         case .transitionDuration: return .number(0.5)
+        case .hudDuration: return .number(1.8)
         case .transition: return .text("crossfade")
         case .ending: return .text("return")
         case .layout: return .text("smart")
@@ -36,16 +37,23 @@ public struct SizeRule: Codable, Equatable, Identifiable, Sendable {
     public var method: String
     public var sharpening: Double
     public var featherPercent: Double
-    public init(id: String, upperScale: Double, maxScale: Double, method: String, sharpening: Double, featherPercent: Double) {
+    public var featherMinimumPixels: Double?
+    public init(id: String, upperScale: Double, maxScale: Double, method: String, sharpening: Double, featherPercent: Double, featherMinimumPixels: Double? = nil) {
         self.id = id; self.upperScale = upperScale; self.maxScale = maxScale
-        self.method = method; self.sharpening = sharpening; self.featherPercent = featherPercent
+        self.method = method; self.sharpening = sharpening; self.featherPercent = featherPercent; self.featherMinimumPixels = featherMinimumPixels
     }
     public static let defaults: [SizeRule] = [
-        .init(id: "reduce", upperScale: 1, maxScale: 1, method: "lanczos", sharpening: 0, featherPercent: 0.5),
-        .init(id: "near", upperScale: 1.25, maxScale: 1.25, method: "bicubic", sharpening: 0, featherPercent: 1),
-        .init(id: "medium", upperScale: 2, maxScale: 2, method: "bicubic", sharpening: 0.12, featherPercent: 2),
-        .init(id: "small", upperScale: 100000, maxScale: 3, method: "lanczos", sharpening: 0.2, featherPercent: 4)
+        .init(id: "reduce", upperScale: 1, maxScale: 1, method: "lanczos", sharpening: 0, featherPercent: 0.5, featherMinimumPixels: 6),
+        .init(id: "near", upperScale: 1.25, maxScale: 1.25, method: "bicubic", sharpening: 0, featherPercent: 1.5, featherMinimumPixels: 16),
+        .init(id: "medium", upperScale: 2, maxScale: 2, method: "bicubic", sharpening: 0.12, featherPercent: 4, featherMinimumPixels: 48),
+        .init(id: "small", upperScale: 100000, maxScale: 3, method: "lanczos", sharpening: 0.2, featherPercent: 8, featherMinimumPixels: 96)
     ]
+    public func featherWidth(shortEdge: Double) -> Double {
+        let percent = min(20, max(0, featherPercent.isFinite ? featherPercent : 0))
+        let minimumValue = featherMinimumPixels.flatMap { $0.isFinite ? $0 : nil } ?? 0
+        let minimum = min(400, max(0, minimumValue))
+        return max(shortEdge * percent / 100, minimum)
+    }
 }
 
 public struct Preferences: Codable, Equatable, Sendable {
@@ -67,6 +75,7 @@ public struct Preferences: Codable, Equatable, Sendable {
             switch key {
             case .interval: range = 0.25...3600
             case .transitionDuration: range = 0...30
+            case .hudDuration: range = 0.25...15
             case .prefetch: range = 1...8
             case .cropLimit: range = 0...75
             default: range = 0...100000

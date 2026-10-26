@@ -12,9 +12,9 @@ Create a preset, add folders, and click its card to start. Images remain in thei
 - Full screen on the app's display, optional display selection and windowed playback.
 - Direct cuts, crossfades and fades through the background.
 - Proportional fit, fill, width, height and smart cropping, with separate portrait/landscape choices.
-- Size-dependent Lanczos/bicubic scaling, sharpening, enlargement limits and soft edges.
+- Size-dependent Lanczos/bicubic scaling, sharpening, enlargement limits and configurable soft-edge widths.
 - ImageIO decoding, Core Image processing and Metal presentation; configurable prefetching and bounded texture caching.
-- Configurable keyboard and mouse bindings; pause, navigate, zoom, filename overlays and Finder reveal.
+- Configurable keyboard and mouse bindings; pause, navigate, zoom, temporary-message duration, persistent filename overlays and Finder reveal.
 - Mark images during playback; review thumbnails and move selected originals to Trash in a separate cleanup window.
 - Global defaults with individual preset overrides. Import/export presets as JSON.
 - Built-in demo with three source sizes; no network connection or AI processing during playback.

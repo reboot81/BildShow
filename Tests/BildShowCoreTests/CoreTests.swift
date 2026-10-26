@@ -51,13 +51,30 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(layout.scale, 3)
         XCTAssertEqual(layout.width, 720)
         XCTAssertEqual(layout.height, 1080)
-        XCTAssertEqual(layout.rule.featherPercent, 4)
+        XCTAssertEqual(layout.rule.featherPercent, 8)
+        XCTAssertEqual(layout.rule.featherWidth(shortEdge: min(layout.width, layout.height)), 96)
     }
     func testSmallerImagesUseProgressivelySofterEdges() {
         let rules = SizeRule.defaults
         XCTAssertLessThan(rules[0].featherPercent, rules[1].featherPercent)
         XCTAssertLessThan(rules[1].featherPercent, rules[2].featherPercent)
         XCTAssertLessThan(rules[2].featherPercent, rules[3].featherPercent)
+        XCTAssertLessThan(rules[0].featherWidth(shortEdge: 1000), rules[1].featherWidth(shortEdge: 1000))
+        XCTAssertLessThan(rules[1].featherWidth(shortEdge: 1000), rules[2].featherWidth(shortEdge: 1000))
+        XCTAssertLessThan(rules[2].featherWidth(shortEdge: 1000), rules[3].featherWidth(shortEdge: 1000))
+    }
+    func testTemporaryOverlayDurationIsBounded() {
+        var settings = Preferences()
+        settings.values[Setting.hudDuration.rawValue] = .number(0)
+        XCTAssertEqual(settings[.hudDuration].number, 0.25)
+        settings.values[Setting.hudDuration.rawValue] = .number(100)
+        XCTAssertEqual(settings[.hudDuration].number, 15)
+    }
+    func testLegacySizeRuleDecodesWithoutMinimumFeatherWidth() throws {
+        let json = #"{"id":"small","upperScale":100000,"maxScale":3,"method":"lanczos","sharpening":0.2,"featherPercent":4}"#.data(using: .utf8)!
+        let rule = try JSONDecoder().decode(SizeRule.self, from: json)
+        XCTAssertNil(rule.featherMinimumPixels)
+        XCTAssertEqual(rule.featherWidth(shortEdge: 1000), 40)
     }
     func testFullscreenIsEnabledByDefault() {
         XCTAssertTrue(Preferences()[.fullscreen].bool)

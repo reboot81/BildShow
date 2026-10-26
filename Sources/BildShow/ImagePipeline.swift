@@ -118,7 +118,7 @@ final class ImagePipeline: @unchecked Sendable {
             edges: SIMD4(layout.x >= -0.5 ? 1 : 0, layout.y >= -0.5 ? 1 : 0,
                          layout.x + layout.width <= size.width + 0.5 ? 1 : 0,
                          layout.y + layout.height <= size.height + 0.5 ? 1 : 0),
-            feather: settings[.feather].bool ? Float(min(layout.width, layout.height) * layout.rule.featherPercent / 100) : 0,
+            feather: settings[.feather].bool ? Float(layout.rule.featherWidth(shortEdge: min(layout.width, layout.height))) : 0,
             frameCount: count, frameDelay: max(0.02, delay))
     }
 }

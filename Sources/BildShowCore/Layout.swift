@@ -31,6 +31,7 @@ public struct ImageLayout: Equatable, Sendable {
         rule.maxScale = min(8, max(1, rule.maxScale.isFinite ? rule.maxScale : 3))
         rule.sharpening = min(1, max(0, rule.sharpening.isFinite ? rule.sharpening : 0))
         rule.featherPercent = min(20, max(0, rule.featherPercent.isFinite ? rule.featherPercent : 0))
+        if let minimum = rule.featherMinimumPixels { rule.featherMinimumPixels = min(400, max(0, minimum.isFinite ? minimum : 0)) }
         let scale = overrideScale == nil ? min(desired, max(1, rule.maxScale)) : desired
         let w = width * scale, h = height * scale
         let anchor = w > screenWidth || h > screenHeight ? settings[.cropAnchor].text : settings[.placement].text

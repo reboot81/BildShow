@@ -12,8 +12,10 @@ struct PlaybackSettingsEditor: View {
     var body: some View {
         Form {
             Section(L("Uppspelning", "Playback")) {
-                ForEach([Setting.fullscreen, .manual, .random, .ending, .interval, .transition, .transitionDuration], id: \.self) { settingRow($0) }
+                ForEach([Setting.fullscreen, .manual, .random, .ending, .interval, .transition, .transitionDuration, .hudDuration], id: \.self) { settingRow($0) }
                 Text(L("Bildtiden inkluderar övergången. Övergången begränsas till högst halva bildtiden.", "The interval includes the transition. Transitions are limited to half the interval."))
+                    .font(.caption).foregroundStyle(.secondary)
+                Text(L("Tillfälliga meddelanden, exempelvis Pausad, döljs automatiskt. Filnamn och sökväg som aktiverats med I påverkas inte.", "Temporary messages, such as Paused, hide automatically. A filename or path enabled with I is unaffected."))
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section(L("Bildvisning", "Image display")) {
@@ -61,10 +63,17 @@ struct PlaybackSettingsEditor: View {
                                 .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 64)
                         }
                         HStack {
-                            Text(L("Kanttoning (%)", "Edge feather (%)")); Slider(value: ruleBinding(index, \.featherPercent), in: 0...8)
+                            Text(L("Relativ kantbredd (%)", "Relative edge width (%)")); Slider(value: ruleBinding(index, \.featherPercent), in: 0...20)
                             TextField("", value: ruleBinding(index, \.featherPercent), format: .number.precision(.fractionLength(1)))
                                 .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 64)
                         }
+                        HStack {
+                            Text(L("Minsta kantbredd (skärmpixlar)", "Minimum edge width (display pixels)")); Slider(value: optionalRuleBinding(index, \.featherMinimumPixels), in: 0...400)
+                            TextField("", value: optionalRuleBinding(index, \.featherMinimumPixels), format: .number.precision(.fractionLength(0)))
+                                .textFieldStyle(.roundedBorder).multilineTextAlignment(.trailing).frame(width: 64)
+                        }
+                        Text(L("Den största av procentvärdet och minimibredden används. Små bilder kan därför få en bredare, mjukare övergång.", "The larger of the percentage and minimum width is used, allowing small images to receive a wider, softer transition."))
+                            .font(.caption).foregroundStyle(.secondary)
                     }.disabled(isPreset && rules == nil)
                 }
             }
@@ -120,7 +129,7 @@ struct PlaybackSettingsEditor: View {
     }
     func numberStep(_ key: Setting) -> Double {
         switch key {
-        case .interval, .transitionDuration: return 0.25
+        case .interval, .transitionDuration, .hudDuration: return 0.25
         case .cropLimit, .prefetch, .minShort, .minLong: return 1
         default: return 0.1
         }
@@ -135,6 +144,13 @@ struct PlaybackSettingsEditor: View {
         Binding(get: { (rules ?? inherited.rules)[index][keyPath: path] }, set: { value in
             var copy = rules ?? inherited.rules
             copy[index][keyPath: path] = max(0, value.isFinite ? value : 0)
+            rules = copy
+        })
+    }
+    func optionalRuleBinding(_ index: Int, _ path: WritableKeyPath<SizeRule, Double?>) -> Binding<Double> {
+        Binding(get: { (rules ?? inherited.rules)[index][keyPath: path] ?? 0 }, set: { value in
+            var copy = rules ?? inherited.rules
+            copy[index][keyPath: path] = min(400, max(0, value.isFinite ? value : 0))
             rules = copy
         })
     }

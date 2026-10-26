@@ -128,7 +128,7 @@ final class PlaybackWindow: NSWindow {
         captionMode = settings[.filenameAlways].bool ? .filename : .hidden
         overrideScale = nil
         IOPMAssertionCreateWithName(kIOPMAssertionTypePreventUserIdleDisplaySleep as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn), "BildShow slideshow" as CFString, &assertion)
-        surface.message(L("Förbereder bilder…", "Preparing images…"), duration: 10)
+        showMessage(L("Förbereder bilder…", "Preparing images…"))
         DispatchQueue.main.async { [weak self, weak window] in
             guard let self, self.isPlaying, self.window === window else { return }
             self.advance(1, manual: true)
@@ -138,23 +138,23 @@ final class PlaybackWindow: NSWindow {
         switch action {
         case .pause:
             paused.toggle(); if paused { timer?.invalidate() } else { schedule() }
-            surface?.message(paused ? L("Pausad", "Paused") : L("Spelar", "Playing"))
+            showMessage(paused ? L("Pausad", "Paused") : L("Spelar", "Playing"))
         case .next: advance(1, manual: true)
         case .previous: advance(-1, manual: true)
         case .slower, .faster:
             let interval = min(3600, max(0.25, settings[.interval].number + (action == .slower ? 1 : -1)))
             settings.values[Setting.interval.rawValue] = .number(interval)
             if let id = preset?.id, !demoMode { store.update(id) { $0.overrides[Setting.interval.rawValue] = .number(interval) } }
-            schedule(); surface?.message(String(format: "%.2g s", interval))
+            schedule(); showMessage(String(format: "%.2g s", interval))
         case .mark:
             guard let current, let id = preset?.id, !demoMode else { return }
             undoMarks.append(current.path); preset?.markedPaths.insert(current.path)
             store.update(id) { $0.markedPaths.insert(current.path) }
-            surface?.message(L("Markerad för städning · ångra med ", "Marked for cleanup · undo with ") + (settings.shortcuts[PlayerAction.undo.rawValue] ?? PlayerAction.undo.initial).label)
+            showMessage(L("Markerad för städning · ångra med ", "Marked for cleanup · undo with ") + (settings.shortcuts[PlayerAction.undo.rawValue] ?? PlayerAction.undo.initial).label)
             advance(1, manual: true)
         case .undo:
             guard let path = undoMarks.popLast(), let id = preset?.id else { return }
-            preset?.markedPaths.remove(path); store.update(id) { $0.markedPaths.remove(path) }; surface?.message(L("Markeringen ångrad", "Mark undone"))
+            preset?.markedPaths.remove(path); store.update(id) { $0.markedPaths.remove(path) }; showMessage(L("Markeringen ångrad", "Mark undone"))
         case .filename: captionMode = captionMode.next; updateCaption()
         case .filenames:
             settings.values[Setting.filenameAlways.rawValue] = .bool(!settings[.filenameAlways].bool)
@@ -275,6 +275,9 @@ final class PlaybackWindow: NSWindow {
         case .filename: surface?.setCaption(URL(fileURLWithPath: current.path).lastPathComponent)
         case .fullPath: surface?.setCaption(current.path)
         }
+    }
+    private func showMessage(_ text: String) {
+        surface?.message(text, duration: settings[.hudDuration].number)
     }
     private func rerender() {
         guard let current else { return }

@@ -29,7 +29,7 @@ import BildShowCore
         try? FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         var migratedPreferences = false
         if let data = try? Data(contentsOf: base.appendingPathComponent("preferences.json")), var prefs = try? JSONDecoder().decode(Preferences.self, from: data) {
-            if prefs.rules == Self.previousDefaultRules {
+            if prefs.rules == Self.previousDefaultRules || prefs.rules == Self.previousDefaultRulesV2 {
                 prefs.rules = SizeRule.defaults
                 migratedPreferences = true
             }
@@ -64,6 +64,12 @@ import BildShowCore
         .init(id: "near", upperScale: 1.25, maxScale: 1.25, method: "bicubic", sharpening: 0, featherPercent: 2),
         .init(id: "medium", upperScale: 2, maxScale: 2, method: "bicubic", sharpening: 0.12, featherPercent: 1),
         .init(id: "small", upperScale: 100000, maxScale: 3, method: "lanczos", sharpening: 0.2, featherPercent: 0.5)
+    ]
+    private static let previousDefaultRulesV2: [SizeRule] = [
+        .init(id: "reduce", upperScale: 1, maxScale: 1, method: "lanczos", sharpening: 0, featherPercent: 0.5),
+        .init(id: "near", upperScale: 1.25, maxScale: 1.25, method: "bicubic", sharpening: 0, featherPercent: 1),
+        .init(id: "medium", upperScale: 2, maxScale: 2, method: "bicubic", sharpening: 0.12, featherPercent: 2),
+        .init(id: "small", upperScale: 100000, maxScale: 3, method: "lanczos", sharpening: 0.2, featherPercent: 4)
     ]
     func write<T: Encodable & Sendable>(_ value: T, to url: URL) {
         writer.async {

@@ -16,6 +16,7 @@ extension Setting {
         case .ending: return L("Efter sista bilden", "After the last image")
         case .random: return L("Slumpad ordning", "Shuffle")
         case .manual: return L("Starta med manuell frammatning", "Start with manual advance")
+        case .hudDuration: return L("Visa tillfällig text i (s)", "Show temporary text for (s)")
         case .layout: return L("Bildanpassning", "Image layout")
         case .cropLimit: return L("Max beskärning i smart läge (%)", "Maximum crop in smart mode (%)")
         case .placement: return L("Placering av små bilder", "Small image placement")
@@ -43,6 +44,7 @@ extension Setting {
         switch self {
         case .interval: return 0.25...3600
         case .transitionDuration: return 0...10
+        case .hudDuration: return 0.25...15
         case .cropLimit: return 0...90
         case .prefetch: return 1...8
         default: return 0...100000
